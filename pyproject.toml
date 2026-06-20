@@ -1,7 +1,8 @@
 [project]
 name = "safy"
 version = "1.1.0"
-description = "Safy: AI Database Agent"
+description = "SAFY: Local AI Database Agent and Database Safety Gateway"
+requires-python = ">=3.10"
 dependencies = [
     "fastapi",
     "uvicorn",
@@ -13,7 +14,21 @@ dependencies = [
 safy = "Apps.Api.safy_api.cli:main"
 
 [tool.setuptools]
-packages = ["Apps", "Core", "Audit", "State", "Tests", "Tools", "Skills", "Configs", "Gateway", "Logging", "Sandbox", "Toolsets", "DataStore", "Providers"]
+packages = [
+    "Apps",
+    "Core",
+    "Audit",
+    "State",
+    "Tools",
+    "Skills",
+    "Configs",
+    "Gateway",
+    "Logging",
+    "Sandbox",
+    "Toolsets",
+    "DataStore",
+    "Providers",
+]
 
 [build-system]
 requires = ["setuptools>=61.0"]

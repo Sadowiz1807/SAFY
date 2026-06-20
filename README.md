@@ -1,190 +1,57 @@
 # SAFY
 
-SAFY is an AI-assisted database agent and database safety gateway for schema inspection, SQL checking, and read-only query execution. It is designed to put SQL Guard, confirmation gates, redaction, audit metadata, and state-bound execution between users/agents and database access.
+SAFY is a local AI Database Agent and Database Safety Gateway. It provides a local FastAPI backend, a static Web UI, database profile management, SQL safety checks, read-only query display, sandbox-first write/DDL validation, and workflow/audit boundaries between the user/agent and connected databases.
 
-
-## Current Canonical Status
-
-The canonical project-status and audit baseline is now maintained at:
+The canonical project status document is:
 
 ```text
 Docs/SAFY_CURRENT_PROJECT_STATUS.md
 ```
 
-That document is the source of truth for the current SAFY architecture, safety matrix, sandbox workflow, compatibility status, test matrix, and next phases. Older stage/phase notes in this README and under `Docs/Hermes_Execution/` are historical unless explicitly referenced by the current-status document.
+Use that document as the source of truth for the current architecture, safety matrix, sandbox workflow, compatibility status, test matrix, and next phases.
 
-## Current Version
+---
 
-SAFY is currently past the legacy `v1.3.0 SQL Dialect & Cloud Provider Expansion` notes. The active baseline is the Hermes-inspired workflow restructure described in `Docs/SAFY_CURRENT_PROJECT_STATUS.md`. SAFY supports direct read-only database access, sandbox-first write/DDL review, deterministic SQL policy/reviewer checks, and runtime/audit trace boundaries. SAFY is still not an unrestricted production database administration tool.
+## Current Runtime Status
 
-SAFY v1.3.0 supports read-only SQLite/MySQL/PostgreSQL plus Database services SQL Server and Oracle driver contracts. Supabase, Google Cloud SQL, and Amazon Aurora are provider profiles over underlying SQL dialect drivers, not separate query-language drivers. Docker-backed SQL Server/Oracle local integration passed in the env-gated real run after starting the Database services containers.
+SAFY currently supports:
 
-## Supported Features
+- Local dashboard at `http://127.0.0.1:8000/`.
+- Model profile management through OpenAI-compatible providers/local routers.
+- Database profile management with secrets stored through local environment variables.
+- Direct read-only query workflow for safe `SELECT`/show-data requests.
+- Execute Box workflow for user-reviewed SQL.
+- Sandbox-first validation for write/DDL SQL before real database execution.
+- Deterministic SQL safety policy and workflow reviewer checks.
+- Supabase execution through RPC when configured.
+- Runtime/audit trace boundaries with row/secret redaction.
+- Dark/light UI mode, client-side streaming/typewriter UI, and auto-run read-only setting.
 
-- FastAPI backend for profiles, query checks, query execution, sessions, and agent chat.
-- Static web UI under `Apps/Web`.
-- SQL Guard / query check before execution.
-- State-bound `/query/execute` that requires a valid checked state.
-- Sandbox test-support compatibility from earlier milestones.
-- Real connected DB read-only profile flow.
-- Schema introspection for connected databases.
-- Real read-only `SELECT` execution when allowed.
-- Sensitive or broad `SELECT` confirmation.
-- Write/DDL draft handling through Execute Box, sandbox validation, and explicit Execute-button confirmation.
-- Blocked operation handling for destructive SQL, unsafe SQL, unknown SQL, and broad mutations.
-- Temporary result display without result-row persistence in session history.
-- Audit/session metadata with redacted SQL and hashes rather than raw result rows.
-- Redaction and secret-handling boundaries for credentials, driver errors, UI output, logs, reports, and audit records.
-- Runtime test suite covering fake-adapter validation, read-only execution, blocked writes, profile secret handling, API surfaces, and UI labels.
+SAFY is **not** an unrestricted production database administration tool. Destructive SQL such as `DROP` and `TRUNCATE` is blocked or requires a stronger administrative workflow.
 
-## Database Support
+---
 
-Priority and support order:
+## Safety Boundary
 
-1. MySQL
-2. PostgreSQL
-3. SQLite
-4. SQL Server
-5. Oracle
+| Operation | Current behavior |
+|---|---|
+| `SELECT` / show data | Guarded read-only execution, no sandbox required |
+| Broad/sensitive `SELECT` | May be limited, blocked, or require confirmation depending on policy |
+| `CREATE`, `INSERT`, `UPDATE`, `DELETE`, `ALTER` | Draft/review first, then Check Safety in sandbox, then explicit Execute |
+| `DROP`, `TRUNCATE`, permission/server/security statements | Blocked by default or require strong administrative confirmation |
+| Secrets/API keys/passwords | Must stay in `.env` or local environment only; never commit raw secrets |
 
-MySQL/PostgreSQL/SQLite remain Runtime test baseline drivers. Database services adds SQL Server and Oracle as real SQL dialect drivers. These adapters may require optional driver dependencies, OS client drivers, and environment configuration before use in a local or Docker-backed real database environment. Optional Docker integration tests are environment-gated and should skip when Docker, drivers, or required environment variables are unavailable.
+---
 
-SQLite connected-file mode must be path-confined and opened read-only.
+## Installation
 
-Supabase, Google Cloud SQL, and Amazon Aurora are provider profiles over underlying SQL dialect drivers. They do not bypass SQL Guard and are not independent query languages.
-
-## Read-only Safety Boundary
-
-Allowed in real connected DB mode:
-
-- `SELECT`
-- schema introspection
-- safe metadata queries
-- optional safe `EXPLAIN` if supported by the adapter and guaranteed read-only
-
-Not direct-run in real connected DB chat mode:
-
-- `INSERT`
-- `UPDATE`
-- `DELETE`
-- `CREATE`
-- `ALTER`
-- schema/data mutation SQL
-
-These statements must be drafted into Execute Box, pass sandbox validation, and be explicitly executed by the user.
-
-Blocked by default or requiring a separate administrative workflow:
-
-- `DROP`
-- `TRUNCATE`
-- `GRANT`
-- `REVOKE`
-- server/security/admin statements
-- multi-statement SQL
-- `SELECT ... FOR UPDATE`
-- side-effect functions or any SQL that changes permissions, server state, or locks rows for mutation
-
-## Query Workflow
-
-User SQL textbox workflow:
-
-```text
-User enters SQL -> /query/check -> SQL Guard -> confirmation if needed -> /query/execute -> temporary result display
-```
-
-Agent workflow:
-
-```text
-Agent inspects schema -> generates SQL -> explains SQL -> /query/check -> confirmation if needed -> /query/execute for allowed read-only SELECT only
-```
-
-Blocked SQL workflow:
-
-```text
-Blocked SQL may be displayed as non-executed text with a warning, but SAFY will not run it.
-```
-
-`/query/check` must not execute SQL. `/query/execute` requires a valid checked state. Sensitive or broad `SELECT` statements may require confirmation before execution.
-
-
-## Stage 9 JSON Storage Target
-
-Stage 9 targets canonical JSON storage at:
-
-```text
-Data/safy_profiles.json
-Data/sessions/session_<id>.json
-Data/audit/safy_audit.jsonl
-```
-
-The current correction pass completes Pass 1 hardening and records Pass 2 as continuation-required unless those canonical profile, session, and audit paths are fully implemented and tested. `Data/sessions/runtime` is not the final semantic storage layout. Stage 9 does not create database drivers, does not enable write support, and does not enable `INSERT`; write and `INSERT` operations remain blocked.
-
-## Credential Handling
-
-- Local `.env` credentials are allowed for developer/local use.
-- Database profiles should store environment variable names and metadata only.
-- Raw passwords must not be stored in JSON profile stores, runtime DB, audit records, session history, UI output, logs, reports, or test snapshots.
-- Transient UI/API password input may be used for connection testing or one-time session use, but it must not be persisted.
-- Driver errors and connection failures must be redacted before reaching users, logs, audit records, reports, or UI output.
-- Use fake placeholders in examples and documentation.
-
-## Example `.env`
-
-```env
-SAFY_MYSQL_HOST=localhost
-SAFY_MYSQL_PORT=3306
-SAFY_MYSQL_DATABASE=safy_demo
-SAFY_MYSQL_USERNAME=safy_readonly
-SAFY_MYSQL_PASSWORD=change-me-fake
-
-SAFY_POSTGRES_HOST=localhost
-SAFY_POSTGRES_PORT=5432
-SAFY_POSTGRES_DATABASE=safy_demo
-SAFY_POSTGRES_USERNAME=safy_readonly
-SAFY_POSTGRES_PASSWORD=change-me-fake
-```
-
-Use a database user with read-only permissions for real connected DB profiles.
-
-## Database services Docker Integration Targets
-
-Database services includes optional local Docker automation for SQL Server and Oracle integration targets:
-
-```powershell
-Copy-Item Docker\.env.database_services.example Docker\.env.database_services
-Scripts\check_database_services_docker.ps1 -RequireSqlServerOdbc
-Scripts\start_database_services_databases.ps1 -Wait
-```
-
-The Docker layer creates local seed schemas and a `safy_readonly` user for validation only. It does not enable SAFY write support. SQL Server uses a small local seed schema by default because AdventureWorks restore is heavier; Oracle uses a small local seed schema by default because full Oracle Sample Schemas setup can be heavy.
-
-Run env-gated integration tests only after containers are healthy and local test passwords are set:
-
-```powershell
-$env:SAFY_STAGE11_SQLSERVER_DOCKER_REQUIRED="1"
-$env:SAFY_STAGE11_ORACLE_DOCKER_REQUIRED="1"
-$env:SAFY_SQLSERVER_PASSWORD="safy_ro_database_services_fake_123!"
-$env:SAFY_ORACLE_PASSWORD="safy_ro_database_services_fake_123"
-python -m pytest Tests\database_services -q -rs --ignore=tmp --basetemp=tmp\pytest_database_services
-```
-
-If Docker Desktop is not running, report `BLOCKED_DOCKER_ENGINE_NOT_RUNNING`. If Microsoft ODBC Driver 18 is missing, report `SQLSERVER_ODBC_DRIVER_MISSING`. If SQL Server sqlcmd is missing in the container, report `BLOCKED_SQLSERVER_SQLCMD_MISSING`. If the SQL Server readonly login smoke test cannot open `safy_database_services`, report `BLOCKED_SQLSERVER_LOGIN_MAPPING` and do not claim PASS. If Oracle image/setup is unavailable, report `BLOCKED_ORACLE_VALIDATION`. The latest env-gated local Docker run passed for both SQL Server and Oracle.
-
-Stop local targets with:
-
-```powershell
-Scripts\stop_database_services_databases.ps1
-```
-
-## Installing And Running
-
-From the repository root, install the editable console launcher:
+From the repository root:
 
 ```powershell
 python -m pip install -e .
 ```
 
-Start SAFY and open the dashboard after `/health` is ready:
+Start SAFY and open the dashboard:
 
 ```powershell
 safy run
@@ -196,179 +63,230 @@ Start SAFY without opening a browser:
 safy run --no-browser
 ```
 
-If Windows does not recognize bare `safy` from `C:\Users\ASUS`, Python's Scripts directory is not on `PATH`. Run `Scripts/install_safy_launcher.ps1` or add the directory printed by that helper to `PATH`, then retry `safy info` and `safy run --no-browser`. Do not treat bare `safy run` as validated until it works from `C:\Users\ASUS` in that shell.
-
-The FastAPI application is defined in `Apps/Api/safy_api/main.py`. The dashboard is served at `/`; static assets are served from `/static`; `/docs` is the developer OpenAPI UI; `/health` returns the readiness envelope used by the launcher.
-
-## Opening The Web UI
-
-Static UI files are located at:
+The FastAPI app is defined in:
 
 ```text
-Apps/Web/index.html
-Apps/Web/styles.css
-Apps/Web/safy-ui.js
+Apps/Api/safy_api/main.py
 ```
 
-Use `http://127.0.0.1:8000/` after `safy run`; do not open `Apps/Web/index.html` directly for Stage 9 validation because the API-served dashboard owns the `/static/...` asset paths.
-
-## Basic Usage
-
-1. Start the backend.
-2. Open the UI.
-3. Create or select a database profile.
-4. Test the connection.
-5. Inspect schema metadata.
-6. Enter a `SELECT` query.
-7. Review the `/query/check` result.
-8. Confirm if the query is sensitive or broad.
-9. Execute through `/query/execute`.
-10. View temporary results and row-limit/timeout/redaction status.
-
-## API Endpoint Overview
-
-Key endpoints implemented or extended by Runtime:
+The dashboard is served at:
 
 ```text
-POST /profiles/database/save
-POST /profiles/database/test
-GET  /profiles/database/{database_profile_id}/status
-GET  /profiles/database/{database_profile_id}/schema
-POST /query/check
-POST /query/execute
-POST /agent/chat
+http://127.0.0.1:8000/
 ```
 
-All real DB query execution must pass through the query-check and state-bound execute flow.
-
-## Testing
-
-Run Runtime tests:
+If Windows does not recognize `safy`, make sure Python's Scripts directory is on `PATH`, then retry:
 
 ```powershell
-python -m pytest Tests/runtime -q
+safy info
+safy run --no-browser
 ```
 
-Run the full API contract-8 suite:
+---
 
-```powershell
-python -m pytest Tests/api_contract Tests/api_contract_5 Tests/stage2 Tests/stage2_5 Tests/sql_guard Tests/agent_runtime Tests/agent_runtime_5 Tests/api_runtime Tests/stage6 Tests/stage7 Tests/runtime -q --basetemp=tmp/pytest_runtime_final
-```
+## Optional Database Dependencies
 
-Run static checks:
-
-```powershell
-python -m compileall .
-node --check Apps/Web/safy-ui.js
-```
-
-Latest confirmed Runtime validation evidence recorded in `Docs/Hermes_Execution/report/RUNTIME_IMPLEMENTATION_REPORT.md` and `Docs/Hermes_Execution/report/RUNTIME_FINAL_REPORT.md` includes `158 passed` for the API contract-8 suite.
-
-## Optional Integration Tests
-
-- Test-support adapter tests are mandatory and always run.
-- Docker MySQL integration tests are optional and environment-gated.
-- Docker PostgreSQL integration tests are optional and environment-gated.
-- SQLite path-confined integration can use temporary read-only database files.
-- Optional tests should skip if Docker, required environment variables, database drivers, or local DB services are missing.
-
-## Troubleshooting
-
-Common issues and stable error codes:
-
-- `DB_PROFILE_NOT_FOUND` - selected database profile does not exist.
-- `DB_CONNECTION_FAILED` - database connection failed with a redacted error.
-- `DB_AUTH_FAILED` - authentication failed; check read-only user credentials and env vars.
-- `DB_SSL_REQUIRED` - database requires SSL configuration.
-- `DB_TIMEOUT` - connection, schema introspection, or query execution timed out.
-- `DB_READONLY_VIOLATION` - SQL violates read-only mode, such as `SELECT ... FOR UPDATE`.
-- `DB_UNSAFE_SQL_BLOCKED` - SQL is unsafe or changes data/schema/permissions/server state.
-- `DB_SCHEMA_INTROSPECTION_FAILED` - schema read failed with a redacted error.
-- `DB_RESULT_LIMIT_EXCEEDED` - query exceeded configured row/result limits.
-- `DB_SAMPLE_ROWS_APPROVAL_REQUIRED` - sample rows require explicit approval.
-- `DB_SENSITIVE_SELECT_CONFIRMATION_REQUIRED` - sensitive or broad `SELECT` requires confirmation.
-- `DB_DRIVER_ERROR_REDACTED` - raw driver error was redacted.
-- `DB_INSERT_BLOCKED` - `INSERT` is blocked in Runtime read-only mode.
-
-## Project Structure
-
-```text
-Apps/Api                FastAPI backend
-Apps/Web                Static web UI
-Core                    Agent core and execution context
-Gateway                 SQL guard, query orchestration, adapters, real DB policy
-DataStore               Profile storage and validation
-State                   Runtime/session state
-Audit                   Audit store and audit logger
-Logging                 Redaction helpers
-Tests                   Stage test suites
-Docs/Hermes_Execution   Stage plans, contracts, reports, and validation docs
-```
-
-## Security Notes
-
-- No raw secret persistence.
-- No result-row persistence in session history.
-- SQL Guard is mandatory for query execution.
-- `/query/execute` is state-bound to a prior check.
-- Driver errors and tracebacks are redacted.
-- A read-only database user is recommended for every real connected DB profile.
-- Agent execution cannot bypass SQL Guard or execute blocked SQL.
-
-## Roadmap / Future Updates
-
-This `README.md` is the main project README and should be updated after future stages.
-
-Future write support, if ever added, must be a separately approved gated stage. Do not silently add write support. Cloud DB support, SSH tunnel/proxy/VPN support, managed provider hardening, broader dependency packaging, and production hardening may be future scope.
-
-## Final Warning
-
-SAFY v1.1.0 is read-only for real connected databases. It is not a tool for executing writes, migrations, destructive SQL, or unrestricted production database administration.
-
-
-
-
-## Runtime test Reconciled Validation Status
-
-Runtime test supports read-only SQLite/MySQL/PostgreSQL drivers. MySQL/PostgreSQL validation requires Docker. The latest Runtime test Docker validation passed with `SAFY_STAGE10_DOCKER_REQUIRED=1`.
-
-User-provided validation evidence recorded during final report reconciliation:
-
-- `SAFY_STAGE10_DOCKER_REQUIRED=1` was enabled.
-- `Tests/runtime_test` was rerun after Docker became available.
-- Result: 9 passed, 0 skipped.
-- MySQL Docker validation: PASS.
-- PostgreSQL Docker validation: PASS.
-- SQLite local validation: PASS.
-- Full regression was previously observed as 183 passed, 2 skipped. The 2 skipped tests in the full suite are not Runtime test Docker validations, because Runtime test Docker validation was rerun separately and passed with 9 passed, 0 skipped.
-
-Initial validation attempt was blocked because Docker Desktop/Linux engine was unavailable. After Docker became available and `SAFY_STAGE10_DOCKER_REQUIRED=1` was set, Runtime test Docker validation was rerun and passed with 9 passed, 0 skipped.
-
-Safety status remains unchanged: read-only only, no INSERT, no UPDATE/DELETE/DDL, no raw password persistence, no result row persistence, and no SQL Guard bypass.
-
-## Runtime test: v1.2.0 Real DB Driver Read-only
-
-Runtime test adds real read-only drivers for MySQL, PostgreSQL, and SQLite behind SAFY SQL Guard. Install optional dependencies with:
+Install optional database drivers when needed:
 
 ```powershell
 python -m pip install -r requirements-db.txt
 ```
 
-Docker test databases use:
+Some database targets require local client libraries or Docker services.
+
+---
+
+## Docker / Local Database Services
+
+Current helper scripts use these names:
 
 ```powershell
-docker compose -f Docker/docker-compose.runtime_test.yml up -d
-$env:SAFY_STAGE10_DOCKER_REQUIRED = "1"
-$env:SAFY_STAGE10_MYSQL_PASSWORD = "safy_ro_runtime_test"
-$env:SAFY_STAGE10_POSTGRES_PASSWORD = "safy_ro_runtime_test"
-python -m pytest Tests/runtime_test -q --ignore=tmp --basetemp=tmp\pytest_runtime_test_docker
-docker compose -f Docker/docker-compose.runtime_test.yml down -v
+Scripts\check_docker_runtime.ps1
+Scripts\start_database_services.ps1
+Scripts\stop_database_services.ps1
+Scripts\start_docker_runtime.ps1
+Scripts\stop_docker_runtime.ps1
 ```
 
-Database profiles store metadata in `Data/safy_profiles.json`; set `password_mode` to `env` and store only `password_env`, never raw password values or DSNs with credentials. Recommended production setup is a database user with SELECT-only grants.
+Docker local configuration should be based on example files only. Do not commit real Docker `.env` files.
 
-UI workflow: open the dashboard, configure the single active database profile, test connection, load schema, write a SELECT, run `/query/check`, then execute through `/query/execute`. Agent auto-SELECT is allowed only through the same guarded check/execute path and only for read-only SQL bound to the active profile.
+```text
+Docker/.env.example
+```
 
-Blocked operations include INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, TRUNCATE, REPLACE, MERGE, CALL, EXEC, GRANT, REVOKE, LOAD DATA, COPY, DDL, multi-statement SQL, and locking SELECTs. Query rows are temporary response data only; session and audit records store metadata such as driver, database profile id, SQL hash, row count, status, and redacted error fields.
+---
 
-Troubleshooting: if Docker validation fails with a Docker API or Linux engine error, start Docker Desktop and rerun the compose command. If connection tests fail, verify the readonly user grants and the `SAFY_STAGE10_*_PASSWORD` environment variables.
+## Supabase RPC Setup
+
+For Supabase write/DDL execution through base URL + API key mode, install the RPC function in your Supabase project:
+
+```text
+Scripts/supabase_safy_execute_sql_rpc.sql
+```
+
+Supabase base URL + API key mode is separate from native PostgreSQL password/host/port mode. SAFY still applies SQL Guard and sandbox-first validation before real write/DDL execution.
+
+---
+
+## Basic Usage
+
+1. Start the backend with `safy run`.
+2. Open `http://127.0.0.1:8000/`.
+3. Create/select a model profile.
+4. Create/select a database profile.
+5. Test the database connection.
+6. Refresh/load schema context.
+7. Use chat or Execute Box.
+
+Read-only example:
+
+```text
+hãy show ra các dữ liệu trong bảng datatest
+```
+
+Write/DDL example:
+
+```sql
+CREATE TABLE STUDENT (
+  thne TEXT
+);
+```
+
+Expected DDL workflow:
+
+```text
+SQL draft
+→ Check Safety
+→ sandbox validation
+→ explicit Execute
+→ real database execution
+```
+
+---
+
+## Important API Endpoints
+
+```text
+GET  /health
+POST /agent/chat
+GET  /agent/skills
+GET  /agent/tools
+GET  /agent/state/{chat_id}
+GET  /agent/workflow/{chat_id}
+POST /query/check
+POST /query/execute
+GET  /database-profiles
+POST /database-profiles
+GET  /model-profiles
+POST /model-profiles
+GET  /schema-graph/active
+POST /schema-graph/active/refresh
+```
+
+All real database execution must pass through the guarded query workflow.
+
+---
+
+## Static Validation
+
+Run these checks after changes:
+
+```powershell
+python -m compileall -q Agent Core Tools State Apps/Api/safy_api Gateway Skills Audit DataStore LLM Providers Sandbox Toolsets
+node --check Apps/Web/safy-ui.js
+```
+
+If/when a committed test suite exists, place it under a canonical `Tests/` folder and update this README with exact commands. The current package configuration does not require a `Tests` package.
+
+---
+
+## Push-clean / Git Safety
+
+Before pushing:
+
+```powershell
+gitleaks detect --source . --verbose
+```
+
+Runtime/local-only files must not be committed:
+
+```text
+.env
+.env.*
+Data/secrets/
+Data/sessions/
+Data/sandboxes/
+Sandbox/workspaces/
+Data/**/*.db
+Data/**/*.sqlite
+Data/**/*.sqlite3
+*.local.json
+Docker/.env
+*.log
+```
+
+If a file was already tracked by Git, `.gitignore` alone is not enough. Remove it from the index:
+
+```powershell
+git rm --cached --ignore-unmatch .env
+git rm --cached -r --ignore-unmatch Data/secrets
+git rm --cached -r --ignore-unmatch Data/sessions
+git rm --cached -r --ignore-unmatch Data/sandboxes
+git rm --cached -r --ignore-unmatch Sandbox/workspaces
+```
+
+---
+
+## Project Structure
+
+```text
+Agent/        Agent runtime and schema context
+Apps/Api/     FastAPI backend
+Apps/Web/     Static dashboard UI
+Audit/        Audit schema/store/logger
+Configs/      Runtime configuration
+Core/         Workflow state, policy, reviewer, registries
+DataStore/    Profile/env/schema stores
+Gateway/      SQL guard, query orchestrator, DB adapters
+LLM/          Model profile/provider adapters
+Providers/    Provider registry and mock/demo providers
+Sandbox/      Sandbox manager, Docker manager, workspace lifecycle
+Scripts/      Local helper scripts and setup utilities
+Skills/       Skill packages and runtimes
+State/        Runtime/session/workflow state
+Tools/        Tool registry, schemas, SQL/database/sandbox tools
+Toolsets/     Runtime toolset helpers
+Docs/         Canonical docs, reports, and architecture notes
+```
+
+---
+
+## Troubleshooting
+
+### `package directory 'Tests' does not exist`
+
+This was caused by `pyproject.toml` listing a `Tests` package while the repository did not contain a `Tests/` directory. The package list should not include `Tests` unless that folder exists and is committed.
+
+### `SANDBOX_SECRET_MISSING`
+
+The real database key may exist in `.env`, but sandbox internal credential references may be stale or missing. Reconnect/save the database profile, ensure sandbox, or clear stale local runtime sandbox state and let SAFY recreate it.
+
+### SELECT still asks for Execute
+
+Check the auto-run read-only UI setting and verify the backend classifies the request as `READ_ONLY_SQL`.
+
+### Write/DDL does not auto-run
+
+This is expected. Write/DDL must pass sandbox validation and explicit user execution.
+
+---
+
+## Roadmap
+
+Next major work should focus on:
+
+1. Canonical regression tests.
+2. Text_to_query v2 with examples/tests/templates.
+3. Tool trace/debug UI.
+4. True backend streaming through SSE/WebSocket.
+5. Broader live validation for optional database drivers.
