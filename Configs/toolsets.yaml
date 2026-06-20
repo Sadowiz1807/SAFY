@@ -1,0 +1,41 @@
+schema_version: 2
+source_of_truth: runtime_tool_registry
+notes: >-
+  SAFY runtime supports read-only database reads, sandbox validation, and
+  sandbox-validated real database execution. These flags mirror runtime policy
+  and must not be interpreted as disabling Gateway/query_orchestrator paths.
+real_sandbox_execution: true
+real_database_execution: true
+toolsets:
+  sql:
+    enabled: true
+    tools:
+      - sql.guard
+  database:
+    enabled: true
+    tools:
+      - database.read
+      - database.execute
+  sandbox:
+    enabled: true
+    tools:
+      - sandbox.validate
+  schema:
+    enabled: true
+    tools:
+      - schema.graph.read
+  ui:
+    enabled: true
+    tools:
+      - execute_box.set_draft
+policy:
+  read_only_direct:
+    enabled: true
+    requires_sandbox: false
+  write_and_ddl:
+    enabled: true
+    requires_sandbox: true
+    confirmation_boundary: explicit_execute_button_after_sandbox_pass
+  destructive_sql:
+    enabled: false
+    action: block_by_default

@@ -1,0 +1,55 @@
+phase: Phase 0 - Context Loading and Contract Freeze
+status: historical_completed_gate
+source_of_truth: C:\Users\ASUS\SAFY\Docs_prior_project\SAFY_source.md
+document_location_rule: core artifacts live directly under Docs/Hermes_Execution; historical handoff/report artifacts live under Docs/Hermes_Execution/report/; phase_reports/ is not used
+required_dispatchable_fields:
+  - task_id
+  - title
+  - phase
+  - assigned_agent
+  - priority
+  - status
+  - dispatchable
+  - input_docs
+  - allowed_paths
+  - must_not_modify
+  - requirements
+  - acceptance_criteria
+  - validation_gate
+  - handoff_artifact
+  - definition_of_done
+tasks:
+  - task_id: P0-BRIEF-001
+    title: Phase 0 project brief and decision freeze
+    phase: Phase 0
+    assigned_agent: Architect-Agent
+    priority: high
+    status: historical_completed
+    historical_dispatchable_at_creation: true
+    dispatchable_now: false
+    dispatchable: false
+    input_docs: [SAFY_source.md, HERMES_MAIN_AGENT_EXECUTION_PLAN.md]
+    allowed_paths: [Docs/Hermes_Execution/]
+    must_not_modify: [Apps/, Core/, Providers/, Skills/, Guard/, Tools/, Sandbox/, Database/, State/, Audit/, DataStore/]
+    requirements: [Preserve source of truth, capture mandatory user decisions, document security boundaries]
+    acceptance_criteria: [Project brief present, source of truth named, non-negotiable decisions listed]
+    validation_gate: Gate 1 Source-of-truth and Gate 2 Security
+    handoff_artifact: Docs/Hermes_Execution/report/P0-BRIEF-001.md
+    definition_of_done: Phase 0 brief exists and historical handoff evidence is retained under Docs/Hermes_Execution/report/
+  - task_id: P0-ROSTER-001
+    title: Agent roster, ownership, validation gates, conflict policy, and task-board schema
+    phase: Phase 0
+    assigned_agent: Architect-Agent
+    priority: high
+    status: historical_completed
+    historical_dispatchable_at_creation: true
+    dispatchable_now: false
+    dispatchable: false
+    input_docs: [SAFY_source.md, HERMES_MAIN_AGENT_EXECUTION_PLAN.md]
+    allowed_paths: [Docs/Hermes_Execution/]
+    must_not_modify: [Apps/, Core/, Providers/, Skills/, Guard/, Tools/, Sandbox/, Database/, State/, Audit/, DataStore/]
+    requirements: [Define ownership, define Gate 0, define handoff protocol, define conflict policy]
+    acceptance_criteria: [Roster present, ownership present, validation gates present, task-board schema gate present]
+    validation_gate: Gate 0 Task Board Schema Gate
+    handoff_artifact: Docs/Hermes_Execution/report/P0-ROSTER-001.md
+    definition_of_done: Phase 0 orchestration docs exist and historical handoff evidence is retained under Docs/Hermes_Execution/report/

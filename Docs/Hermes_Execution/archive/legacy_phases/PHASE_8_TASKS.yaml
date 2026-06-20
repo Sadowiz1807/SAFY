@@ -1,0 +1,236 @@
+phase: 8
+name: "Real Connected DB Read-only Adapter"
+status: implementation_validated
+implementation_allowed: true
+execution_mode: main_agent_only
+sub_agents_allowed: false
+requires_user_review_before_implementation: false
+release_target: "v1.1.0 Real Connected DB Read-only"
+real_connected_db_adapter_allowed: true
+real_connected_db_write_allowed: false
+insert_allowed: false
+agent_destructive_connected_db_allowed: false
+result_row_session_persistence_allowed: false
+subphases:
+  - id: "8.1"
+    name: "MySQL Real Connected DB Read-only Adapter"
+    priority: 1
+    implementation_allowed: true
+  - id: "8.2"
+    name: "PostgreSQL Real Connected DB Read-only Adapter"
+    priority: 2
+    implementation_allowed: false
+  - id: "8.3"
+    name: "SQLite Connected File Read-only Adapter"
+    priority: 3
+    implementation_allowed: true
+task_groups:
+  - name: baseline_verification
+    tasks:
+      - id: P8-T001
+        title: Verify Phase 7 baseline and mock-only connected DB status
+        status: planned
+        subphase: cross_phase
+        risk_level: medium
+        dependencies: []
+        acceptance_criteria:
+          - Phase 7 final report confirms PASS_WITH_WARNINGS and 151 passed
+          - Runtime code evidence confirms real connected DB execution is still deferred/mock-only
+  - name: adapter_interface_design
+    tasks:
+      - id: P8-T002
+        title: Define ConnectedDBAdapter interface and normalized adapter models
+        status: planned
+        subphase: cross_phase
+        risk_level: high
+        dependencies: [P8-T001]
+        acceptance_criteria:
+          - Interface includes connect, test_connection, introspect_schema, explain, execute_readonly, close
+          - Error normalization and redaction boundary are defined
+  - name: mysql_adapter_planning
+    tasks:
+      - id: P8-T003
+        title: Plan MySQL read-only adapter behavior and integration strategy
+        status: planned
+        subphase: "8.1"
+        risk_level: high
+        dependencies: [P8-T002]
+        acceptance_criteria:
+          - MySQL is documented as first-priority implementation target
+          - MySQL read-only enforcement, introspection, limits, and Docker testing are planned
+  - name: postgresql_adapter_planning
+    tasks:
+      - id: P8-T004
+        title: Plan PostgreSQL read-only adapter behavior and integration strategy
+        status: planned
+        subphase: "8.2"
+        risk_level: high
+        dependencies: [P8-T002]
+        acceptance_criteria:
+          - PostgreSQL is documented as second-priority implementation target
+          - PostgreSQL read-only enforcement, introspection, limits, and Docker testing are planned
+  - name: sqlite_adapter_planning
+    tasks:
+      - id: P8-T005
+        title: Plan SQLite connected-file read-only adapter with path confinement
+        status: planned
+        subphase: "8.3"
+        risk_level: medium
+        dependencies: [P8-T002]
+        acceptance_criteria:
+          - SQLite is documented as third-priority implementation target
+          - Path-confined read-only file access is planned
+  - name: credential_handling
+    tasks:
+      - id: P8-T006
+        title: Define non-persistent credential and secret handling model
+        status: planned
+        subphase: cross_phase
+        risk_level: high
+        dependencies: [P8-T001]
+        acceptance_criteria:
+          - Raw passwords are forbidden from JSON profiles, runtime DB, audit, logs, and UI output
+          - Env var references and transient secret rules are documented
+  - name: database_profile_model
+    tasks:
+      - id: P8-T007
+        title: Define real DB profile metadata contract
+        status: planned
+        subphase: cross_phase
+        risk_level: medium
+        dependencies: [P8-T006]
+        acceptance_criteria:
+          - Profile metadata fields and no-raw-secret invariants are documented
+          - Transient secret binding model is documented
+  - name: schema_introspection
+    tasks:
+      - id: P8-T008
+        title: Plan schema introspection coverage and normalization
+        status: planned
+        subphase: cross_phase
+        risk_level: medium
+        dependencies: [P8-T002, P8-T007]
+        acceptance_criteria:
+          - Tables, columns, PK/FK, indexes, views, counts, comments, constraints, schemas are planned
+          - Redaction and sample-row approval boundaries are documented
+  - name: sql_guard_real_db_enforcement
+    tasks:
+      - id: P8-T009
+        title: Plan SQL Guard enforcement for real DB read-only mode
+        status: planned
+        subphase: cross_phase
+        risk_level: high
+        dependencies: [P8-T002, P8-T008]
+        acceptance_criteria:
+          - INSERT and all write/destructive SQL are explicitly blocked
+          - Multi-statement SQL, SELECT FOR UPDATE, side-effect SQL, and unsafe EXPLAIN policy are documented
+  - name: user_textbox_direct_sql_flow
+    tasks:
+      - id: P8-T010
+        title: Plan user textbox direct SQL read-only workflow
+        status: planned
+        subphase: cross_phase
+        risk_level: high
+        dependencies: [P8-T009]
+        acceptance_criteria:
+          - Flow uses /query/check then /query/execute with explicit user action
+          - Sensitive or broad SELECT confirmation triggers are planned
+  - name: agent_real_db_flow
+    tasks:
+      - id: P8-T011
+        title: Plan agent real-schema and read-only SQL workflow
+        status: planned
+        subphase: cross_phase
+        risk_level: high
+        dependencies: [P8-T008, P8-T009]
+        acceptance_criteria:
+          - Agent introspects schema before SQL generation
+          - Blocked SQL is display-only and never executed
+  - name: confirmation_policy_for_sensitive_select
+    tasks:
+      - id: P8-T012
+        title: Define confirmation policy for sensitive and broad SELECT queries
+        status: planned
+        subphase: cross_phase
+        risk_level: high
+        dependencies: [P8-T009]
+        acceptance_criteria:
+          - Sensitive table/column heuristics, broad scan detection, and row-limit triggers are documented
+          - Confirmation remains backend-generated, one-time, expiring, and state-bound
+  - name: blocked_insert_write_destructive_operation_ux
+    tasks:
+      - id: P8-T013
+        title: Plan blocked SQL warning UX for INSERT and write/destructive requests
+        status: planned
+        subphase: cross_phase
+        risk_level: medium
+        dependencies: [P8-T009, P8-T010, P8-T011]
+        acceptance_criteria:
+          - INSERT is blocked and not treated as ambiguous
+          - UI and agent warning text path is documented
+  - name: sample_rows_approval
+    tasks:
+      - id: P8-T014
+        title: Plan explicit approval path for sample rows
+        status: planned
+        subphase: cross_phase
+        risk_level: medium
+        dependencies: [P8-T008, P8-T012]
+        acceptance_criteria:
+          - Sample rows require approval, limits, and redaction
+          - Session history non-persistence is documented
+  - name: audit_session_policy
+    tasks:
+      - id: P8-T015
+        title: Define audit and session persistence policy for real DB reads
+        status: planned
+        subphase: cross_phase
+        risk_level: high
+        dependencies: [P8-T006, P8-T009, P8-T014]
+        acceptance_criteria:
+          - Redacted SQL plus sql_hash are stored
+          - Result rows are not stored in session history
+  - name: ui_real_db_mode
+    tasks:
+      - id: P8-T016
+        title: Plan UI contracts for real connected DB read-only mode
+        status: planned
+        subphase: cross_phase
+        risk_level: medium
+        dependencies: [P8-T010, P8-T012, P8-T013, P8-T014, P8-T015]
+        acceptance_criteria:
+          - UI distinguishes sandbox, mock connected preview, and real connected read-only modes
+          - Sensitive confirmation, blocked operation, and temporary results UX are documented
+  - name: fake_adapter_tests
+    tasks:
+      - id: P8-T017
+        title: Plan mandatory fake adapter unit tests
+        status: planned
+        subphase: cross_phase
+        risk_level: medium
+        dependencies: [P8-T002, P8-T009, P8-T015, P8-T016]
+        acceptance_criteria:
+          - Test plan covers connection, introspection, SELECT, blocked INSERT, redaction, audit, and session policy
+  - name: optional_docker_integration_tests
+    tasks:
+      - id: P8-T018
+        title: Plan optional Docker integration test matrix
+        status: planned
+        subphase: cross_phase
+        risk_level: medium
+        dependencies: [P8-T003, P8-T004, P8-T005]
+        acceptance_criteria:
+          - Docker MySQL is first optional integration target
+          - Docker PostgreSQL is second and SQLite path-confined tests are documented
+  - name: release_definition
+    tasks:
+      - id: P8-T019
+        title: Define release boundary for v1.1.0 Real Connected DB Read-only
+        status: planned
+        subphase: cross_phase
+        risk_level: medium
+        dependencies: [P8-T015, P8-T016, P8-T017, P8-T018]
+        acceptance_criteria:
+          - Release definition excludes writes and destructive support
+          - Documentation states implementation remains locked until approval
+

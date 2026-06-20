@@ -1,0 +1,129 @@
+phase: 9
+name: "Storage Consolidation, Repository Cleanup, Runtime Consistency, Dashboard Launcher, and JSON Migration"
+status: PASS_COMPLETE
+implementation_allowed: true
+database_driver_creation_allowed: false
+sub_agents_allowed_for_planning: false
+sub_agents_allowed_for_implementation: true
+main_agent_final_review_required: true
+passes:
+  - id: pass_1
+    name: "Clean repo, JSON scaffold, project restructuring, dashboard, launcher"
+    required: true
+  - id: pass_2
+    name: "JSON storage migration"
+    required: true
+safety:
+  real_connected_db_write_allowed: false
+  insert_allowed: false
+  result_row_session_persistence_allowed: false
+  raw_secret_persistence_allowed: false
+  database_driver_creation_allowed: false
+launcher:
+  command: "safy run"
+  must_work_outside_repo: true
+  auto_open_dashboard: true
+  dashboard_url: "http://127.0.0.1:8000/"
+  no_browser_flag_required: true
+dashboard:
+  root_serves_dashboard: true
+  docs_developer_only: true
+  health_endpoint_required: true
+tasks:
+  - id: P9-P1-01
+    title: "Baseline inventory and generated artifact classification"
+    pass: pass_1
+    status: complete
+    risk_level: medium
+    dependencies: ["Phase 8 final reports", "git status review"]
+    acceptance_criteria: ["Generated artifacts inventoried", "Source/test/docs separated", "No files deleted without approval"]
+    rollback: "Documentation-only inventory; no runtime rollback needed."
+  - id: P9-P1-02
+    title: "Repository archive/merge cleanup execution plan"
+    pass: pass_1
+    status: complete
+    risk_level: medium
+    dependencies: ["P9-P1-01", "import usage analysis"]
+    acceptance_criteria: ["Toolsets/Contracts/Safy_Docs cleanup path verified", "Historical docs archived not deleted"]
+    rollback: "Restore archived paths from git if implementation validation fails."
+  - id: P9-P1-03
+    title: "Dashboard root serving and static asset plan"
+    pass: pass_1
+    status: complete
+    risk_level: medium
+    dependencies: ["Apps/Web files", "FastAPI route review"]
+    acceptance_criteria: ["GET / serves dashboard", "GET /docs remains developer docs", "Assets load safely"]
+    rollback: "Revert route/static mount changes only."
+  - id: P9-P1-04
+    title: "Health endpoint and FastAPI metadata consistency"
+    pass: pass_1
+    status: complete
+    risk_level: low
+    dependencies: ["P9-P1-03"]
+    acceptance_criteria: ["/health returns SAFY envelope", "Version reports 1.1.0", "OpenAPI still loads"]
+    rollback: "Revert metadata/health endpoint changes."
+  - id: P9-P1-05
+    title: "`safy run` console launcher design implementation"
+    pass: pass_1
+    status: complete
+    risk_level: medium
+    dependencies: ["Packaging metadata verification", "Repo-root path strategy"]
+    acceptance_criteria: ["safy run works from C:\\Users\\ASUS", "--no-browser works", "safy info works"]
+    rollback: "Remove console script/CLI module or fallback to Scripts launcher."
+  - id: P9-P1-06
+    title: "JSON storage scaffold and config path plan"
+    pass: pass_1
+    status: complete
+    risk_level: medium
+    dependencies: ["Storage design", "Data folder inventory"]
+    acceptance_criteria: ["Data paths resolved independent of CWD", "No migration executed in Pass 1 unless approved", "Raw secrets rejected"]
+    rollback: "Feature flag scaffold off and keep legacy stores."
+  - id: P9-P1-07
+    title: "Phase 9 tests and README update plan"
+    pass: pass_1
+    status: complete
+    risk_level: low
+    dependencies: ["P9-P1-03", "P9-P1-05"]
+    acceptance_criteria: ["Tests/phase9 validates launcher/dashboard/safety", "README updated after implementation"]
+    rollback: "Remove or adjust Phase 9 tests with implementation rollback."
+  - id: P9-P2-01
+    title: "Profile migration to Data/safy_profiles.json"
+    pass: pass_2
+    status: complete
+    risk_level: high
+    dependencies: ["Pass 1 path scaffold", "legacy profile fixtures"]
+    acceptance_criteria: ["Model/database profiles migrate", "IDs preserved", "Raw secrets rejected"]
+    rollback: "Restore profile backups and legacy profile store feature flag."
+  - id: P9-P2-02
+    title: "Session/runtime migration to Data/sessions JSON"
+    pass: pass_2
+    status: complete
+    risk_level: high
+    dependencies: ["Pass 1 path scaffold", "runtime schema mapping"]
+    acceptance_criteria: ["Sessions/workspaces/recovery preserved", "Query execute state safety preserved"]
+    rollback: "Restore runtime SQLite backup and legacy runtime store flag."
+  - id: P9-P2-03
+    title: "Audit migration/adaptation to Data/audit/safy_audit.jsonl"
+    pass: pass_2
+    status: complete
+    risk_level: high
+    dependencies: ["Pass 1 path scaffold", "audit schema mapping"]
+    acceptance_criteria: ["Append-only JSONL works", "Redacted SQL + sql_hash preserved", "Driver errors redacted"]
+    rollback: "Restore audit SQLite backup and legacy audit store flag."
+  - id: P9-P2-04
+    title: "Full storage safety and regression validation"
+    pass: pass_2
+    status: complete
+    risk_level: high
+    dependencies: ["P9-P2-01", "P9-P2-02", "P9-P2-03"]
+    acceptance_criteria: ["Phase 1-9 suite passes", "No result rows persisted", "No raw secrets persisted", "INSERT blocked"]
+    rollback: "Revert JSON storage switch and restore backups."
+  - id: P9-5-UI-01
+    title: "Dashboard real runtime API integration"
+    pass: phase_9_5
+    status: complete
+    risk_level: medium
+    dependencies: ["P9-P2-01", "P9-P2-02", "P9-P2-03"]
+    acceptance_criteria: ["Index uses /static assets", "Profiles load from Data/safy_profiles.json", "New chat creates Data/sessions JSON", "No DB writes or INSERT enabled"]
+    rollback: "Revert UI API endpoint and dashboard JS changes only; keep read-only safety boundaries."
+

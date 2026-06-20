@@ -1,0 +1,13 @@
+{
+  "profiles": [
+    {
+      "profile_id": "default_user",
+      "profile_type": "user",
+      "display_name": "Local user",
+      "username": "local_user",
+      "password_env": "SAFY_LOGIN_PASSWORD",
+      "active": false
+    }
+  ],
+  "schema_version": 1
+}

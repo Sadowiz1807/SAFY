@@ -1,0 +1,36 @@
+stage: 14
+real_skill_execution: true
+skills:
+  command_router:
+    path: Skills/Command_router
+    status: active
+  database_context:
+    path: Skills/Database_context
+    status: active
+  database_switch:
+    path: Skills/Database_switch
+    status: active
+  schema_graph:
+    path: Skills/Schema_graph
+    status: active
+  text_to_query:
+    path: Skills/Text_to_query
+    status: active
+  query_guard:
+    path: Skills/Query_guard
+    status: active
+  execute_box:
+    path: Skills/Execute_box
+    status: active
+  execute_query:
+    path: Skills/Execute_query
+    status: active
+  query_explain:
+    path: Skills/Query_explain
+    status: active
+  query_repair:
+    path: Skills/Query_repair
+    status: active
+  create_database:
+    path: Skills/Create_database
+    status: legacy_sandbox_only

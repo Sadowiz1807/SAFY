@@ -1,0 +1,30 @@
+services:
+  runtime_test-mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: root_runtime_test_fake
+      MYSQL_DATABASE: safy_runtime_test
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./mysql-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot_runtime_test_fake"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  runtime_test-postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: safy_runtime_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_runtime_test_fake
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d safy_runtime_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 30

@@ -1,0 +1,143 @@
+phase: Phase 2 - Runtime, Profiles, Secrets, and Audit Base
+document_status: historical_implementation_task_board
+superseded_for_final_documentation_by:
+  - Docs/Hermes_Execution/PHASE_2_FINAL_ACCEPTANCE_CHECKLIST.md
+  - Docs/Hermes_Execution/PHASE_2_ARTIFACT_CONSISTENCY_MATRIX.md
+historical_reports:
+  - Retained reports are evidence only and are not dispatch authority.
+implementation_delta_status: not_verified
+dispatch_policy: do_not_dispatch
+dispatch_note: "Do not dispatch from this file. Use PHASE_2_IMPLEMENTATION_DELTA_PLAN.md only after explicit user approval and task-contract generation."
+notes:
+  - Original implementation tasks did not include all later documentation refinements.
+  - Later schema/contracts are not implementation-verified.
+  - Phase 3 must not assume later docs are already implemented.
+tasks:
+  - task_id: P2-CONFIG-LOADER-001
+    title: Config loading foundation
+    phase: Phase 2
+    assigned_agent: Runtime-Data-Agent
+    priority: high
+    status: completed
+    historical_dispatchable_at_creation: true
+    dispatchable_now: false
+    input_docs: [SAFY_source.md, Docs/Hermes_Execution/PHASE_2_CONTRACTS.md]
+    allowed_paths: [Configs/, DataStore/, Docs/Hermes_Execution/]
+    must_not_modify: [Apps/Web/, Apps/Api/, Gateway/, Core/, Providers/, Skills/, Guard/, Tools/, Sandbox/, Database/, State/, Audit/]
+    requirements: [Load app/policies/skills/toolsets configs, controlled errors, no raw secrets]
+    acceptance_criteria: [Missing/invalid configs controlled, data paths resolved, no secret logging]
+    validation_gate: PHASE_2_VALIDATION_CHECKLIST.md
+    handoff_artifact: Docs/Hermes_Execution/report/P2-CONFIG-LOADER-001.md
+    definition_of_done: Config loader exists and validates Phase 2 paths.
+  - task_id: P2-PROFILE-STORAGE-001
+    title: Profile JSON storage foundation
+    phase: Phase 2
+    assigned_agent: Runtime-Data-Agent
+    priority: high
+    status: completed
+    historical_dispatchable_at_creation: true
+    dispatchable_now: false
+    input_docs: [SAFY_source.md, Docs/Hermes_Execution/PHASE_2_DATA_SCHEMA_SPEC.md]
+    allowed_paths: [DataStore/, Data/, Configs/, Docs/Hermes_Execution/]
+    must_not_modify: [Apps/Web/, Apps/Api/, Gateway/, Core/, Providers/, Skills/, Guard/, Tools/, Sandbox/, Database/, State/, Audit/]
+    requirements: [Atomic JSON writes, schemas, no raw secrets in JSON, masked profile views]
+    acceptance_criteria: [Default profiles readable, upsert validates, raw secrets rejected]
+    validation_gate: PHASE_2_VALIDATION_CHECKLIST.md
+    handoff_artifact: Docs/Hermes_Execution/report/P2-PROFILE-STORAGE-001.md
+    definition_of_done: Profile stores preserve env-var-only secret references.
+  - task_id: P2-ENV-WRITER-SECRET-RESOLVER-001
+    title: Env writer and secret resolver foundation
+    phase: Phase 2
+    assigned_agent: Runtime-Data-Agent
+    priority: high
+    status: completed
+    historical_dispatchable_at_creation: true
+    dispatchable_now: false
+    input_docs: [SAFY_source.md, Docs/Hermes_Execution/PHASE_2_SECURITY_SPEC.md]
+    allowed_paths: [DataStore/, Logging/, Configs/, Docs/Hermes_Execution/, .env.example, .gitignore]
+    must_not_modify: [Apps/Web/, Apps/Api/, Gateway/, Core/, Providers/, Skills/, Guard/, Tools/, Sandbox/, Database/, State/, Audit/]
+    requirements: [.env writer, secret resolver, overwrite confirmation, gitignore env, redaction]
+    acceptance_criteria: [Existing key requires confirmation, missing secret controlled, no raw secret output]
+    validation_gate: PHASE_2_VALIDATION_CHECKLIST.md
+    handoff_artifact: Docs/Hermes_Execution/report/P2-ENV-WRITER-SECRET-RESOLVER-001.md
+    definition_of_done: Secrets go only to .env and resolve through controlled interface.
+  - task_id: P2-RUNTIME-DB-001
+    title: Runtime SQLite DB foundation
+    phase: Phase 2
+    assigned_agent: Runtime-Data-Agent
+    priority: high
+    status: completed
+    historical_dispatchable_at_creation: true
+    dispatchable_now: false
+    input_docs: [SAFY_source.md, Docs/Hermes_Execution/PHASE_2_DATA_SCHEMA_SPEC.md]
+    allowed_paths: [State/, Data/, Configs/, Docs/Hermes_Execution/]
+    must_not_modify: [Apps/Web/, Apps/Api/, Gateway/, Core/, Providers/, Skills/, Guard/, Tools/, Sandbox/, Database/, DataStore/, Audit/]
+    requirements: [schema_version, chat_runtime, sandbox_workspaces, idempotent migration]
+    acceptance_criteria: [DB initializes, tables exist, no raw secrets or raw SQL by default]
+    validation_gate: PHASE_2_VALIDATION_CHECKLIST.md
+    handoff_artifact: Docs/Hermes_Execution/report/P2-RUNTIME-DB-001.md
+    definition_of_done: Runtime DB foundation initializes repeatably.
+  - task_id: P2-AUDIT-DB-REDACTION-001
+    title: Audit DB and redaction foundation
+    phase: Phase 2
+    assigned_agent: Runtime-Data-Agent
+    priority: high
+    status: completed
+    historical_dispatchable_at_creation: true
+    dispatchable_now: false
+    input_docs: [SAFY_source.md, Docs/Hermes_Execution/PHASE_2_SECURITY_SPEC.md]
+    allowed_paths: [Audit/, Logging/, Data/, Configs/, Docs/Hermes_Execution/]
+    must_not_modify: [Apps/Web/, Apps/Api/, Gateway/, Core/, Providers/, Skills/, Guard/, Tools/, Sandbox/, Database/, DataStore/, State/]
+    requirements: [audit schema, audit store, redaction, statement_hash, raw_sql_stored false]
+    acceptance_criteria: [Audit initializes, mock and high-risk events write, secrets redact]
+    validation_gate: PHASE_2_VALIDATION_CHECKLIST.md
+    handoff_artifact: Docs/Hermes_Execution/report/P2-AUDIT-DB-REDACTION-001.md
+    definition_of_done: Audit foundation fail-closed contract is represented.
+  - task_id: P2-HIGH-RISK-CODE-STATE-001
+    title: High-risk confirmation code state
+    phase: Phase 2
+    assigned_agent: Runtime-Data-Agent
+    priority: high
+    status: completed
+    historical_dispatchable_at_creation: true
+    dispatchable_now: false
+    input_docs: [SAFY_source.md, Docs/Hermes_Execution/PHASE_2_CONTRACTS.md]
+    allowed_paths: [State/, Audit/, Docs/Hermes_Execution/]
+    must_not_modify: [Apps/Web/, Apps/Api/, Gateway/, Core/, Providers/, Skills/, Guard/, Tools/, Sandbox/, Database/, DataStore/, Configs/]
+    requirements: [Backend 4-digit numeric code, bind check/sql hash/target/expiry, block invalid cases]
+    acceptance_criteria: [Correct validates, wrong/expired/hash mismatch/target mismatch fail, not LLM generated]
+    validation_gate: PHASE_2_VALIDATION_CHECKLIST.md
+    handoff_artifact: Docs/Hermes_Execution/report/P2-HIGH-RISK-CODE-STATE-001.md
+    definition_of_done: Replaceable Phase 2 code state exists.
+  - task_id: P2-PROFILE-API-INTEGRATION-001
+    title: Profile API integration
+    phase: Phase 2
+    assigned_agent: Backend-API-Agent
+    priority: high
+    status: completed
+    historical_dispatchable_at_creation: true
+    dispatchable_now: false
+    input_docs: [SAFY_source.md, Docs/Hermes_Execution/PHASE_2_CONTRACTS.md]
+    allowed_paths: [Apps/Api/, Gateway/, Contracts/, Docs/Hermes_Execution/]
+    must_not_modify: [Apps/Web/, Core/, Providers/, Skills/, Guard/, Tools/, Sandbox/, Database/, DataStore/, State/, Audit/, Logging/, Configs/]
+    requirements: [Profile saves call stores/env writer, GET profiles reads DataStore, masked responses]
+    acceptance_criteria: [No raw secret response, overwrite confirmation works, masked lists returned]
+    validation_gate: PHASE_2_VALIDATION_CHECKLIST.md
+    handoff_artifact: Docs/Hermes_Execution/report/P2-PROFILE-API-INTEGRATION-001.md
+    definition_of_done: Phase 1 profile API uses Phase 2 storage contracts.
+  - task_id: P2-UI-PROFILE-INTEGRATION-001
+    title: UI profile integration
+    phase: Phase 2
+    assigned_agent: Frontend-UX-Agent
+    priority: medium
+    status: completed
+    historical_dispatchable_at_creation: true
+    dispatchable_now: false
+    input_docs: [SAFY_source.md, Apps/Web/index.html, Apps/Web/mock-ui.js]
+    allowed_paths: [Apps/Web/, Docs/Hermes_Execution/]
+    must_not_modify: [Apps/Api/, Gateway/, DataStore/, State/, Audit/, Logging/, Core/, Providers/, Skills/, Guard/, Tools/, Sandbox/, Database/, Configs/]
+    requirements: [Save/test profile forms, overwrite confirmation, masked secret status, normalized errors]
+    acceptance_criteria: [Model/database submit works, overwrite confirms/resubmits, no raw secret display]
+    validation_gate: PHASE_2_VALIDATION_CHECKLIST.md
+    handoff_artifact: Docs/Hermes_Execution/report/P2-UI-PROFILE-INTEGRATION-001.md
+    definition_of_done: UI handles profile save/overwrite/masked state against backend endpoints.

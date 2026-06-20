@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "profiles": [
+    {
+      "profile_id": "example_openai_compatible",
+      "display_name": "Example OpenAI-compatible router",
+      "provider_type": "openai_compatible",
+      "base_url": "http://127.0.0.1:20128/v1",
+      "model": "example-model",
+      "api_key_env": "SAFY_MODEL_EXAMPLE_API_KEY",
+      "auth_mode": "env_api_key",
+      "is_active": false,
+      "capabilities": {
+        "chat": true,
+        "json_mode": "optional_or_detected",
+        "tool_calling": "optional_or_detected"
+      }
+    }
+  ]
+}

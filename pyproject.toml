@@ -1,0 +1,20 @@
+[project]
+name = "safy"
+version = "1.1.0"
+description = "Safy: AI Database Agent"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "pyyaml",
+]
+
+[project.scripts]
+safy = "Apps.Api.safy_api.cli:main"
+
+[tool.setuptools]
+packages = ["Apps", "Core", "Audit", "State", "Tests", "Tools", "Skills", "Configs", "Gateway", "Logging", "Sandbox", "Toolsets", "DataStore", "Providers"]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

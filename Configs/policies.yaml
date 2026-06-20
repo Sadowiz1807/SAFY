@@ -1,0 +1,3 @@
+agent_connected_database: read_only
+user_query_box: credential_permissions_after_check_confirmation_audit
+manual_write_enabled: future_policy_explicit_only

@@ -1,0 +1,135 @@
+phase: 12
+title: User Database Sandbox Runtime
+status_target_planning: PASS_PHASE_12_PLANNING_READY
+status_target_implementation_later: PASS_PHASE_12_SANDBOX_COMPLETE
+scope:
+  planned_support:
+    - PostgreSQL
+    - Supabase-compatible PostgreSQL
+    - MySQL
+    - SQL Server
+    - Oracle
+    - SQLite
+  implementation_priority:
+    - PostgreSQL/Supabase-compatible first
+  follow_up_hardened_support:
+    - MySQL
+    - SQL Server
+    - Oracle
+    - SQLite
+policies:
+  read_only_phase_12: true
+  write_sandbox_mode_enabled: false
+  active_sandbox_policy: one active sandbox per project/workspace, fallback one active sandbox globally
+  query_check_db_connection_allowed: false
+  result_rows_persisted: false
+  audit_mode: metadata-only
+tasks:
+  - id: P12-001
+    title: Define sandbox state model
+    deliverables:
+      - Data/sandboxes layout
+      - sandbox metadata schema
+      - lifecycle states and transitions
+      - project/workspace fields
+      - active sandbox uniqueness rule
+    acceptance:
+      - sandbox runtime state is separate from Data/safy_profiles.json
+      - one active sandbox policy is enforceable
+      - future workspace scoping is represented
+  - id: P12-002
+    title: Define Docker sandbox manager
+    deliverables:
+      - Docker availability gate
+      - container/volume/network lifecycle design
+      - resource limit policy
+      - runtime vs test-container distinction
+    acceptance:
+      - Docker gate can return BLOCKED_DOCKER_ENGINE_NOT_RUNNING
+      - disabled gate can return SKIPPED_DOCKER_NOT_REQUIRED
+      - no report claims Docker validation when skipped
+  - id: P12-003
+    title: Define restore/import workflow
+    deliverables:
+      - backup source contract
+      - PostgreSQL/Supabase-compatible restore priority
+      - DBMS adapter plan for MySQL, SQL Server, Oracle, SQLite
+      - readonly user creation step
+      - schema cache generation step
+      - Supabase private backup gate
+    acceptance:
+      - owner/admin is restore-only
+      - runtime query user is readonly
+      - private backup is not committed or persisted
+      - gated statuses cover skipped, missing, failed, pass
+  - id: P12-004
+    title: Define sandbox profile binding
+    deliverables:
+      - sandbox_database_profile/runtime binding shape
+      - separation from real_database_profile, model_profile, provider_profile
+      - readonly credential binding rules
+    acceptance:
+      - /query/execute can resolve sandbox target safely
+      - sandbox state remains under Data/sandboxes
+      - raw DSNs/passwords are not exposed
+  - id: P12-005
+    title: Define guarded sandbox query flow
+    deliverables:
+      - /query/check target=sandbox contract
+      - /query/execute sandbox_id binding contract
+      - sql_hash/check_id enforcement
+      - no-DB-connection check behavior
+      - metadata-only query audit
+    acceptance:
+      - /query/check never connects to DB
+      - /query/execute requires matching check_id and sql_hash
+      - writes remain blocked
+      - result rows are not persisted
+  - id: P12-006
+    title: Define Sandbox Manager UI
+    deliverables:
+      - Sandbox Manager page
+      - create/start/stop/delete controls
+      - backup/source selector
+      - restore progress panel
+      - schema viewer
+      - sandbox-bound query panel
+      - REAL DB vs SANDBOX target selector
+      - audit timeline
+    acceptance:
+      - user confirmation required for create/restore/delete where appropriate
+      - clear warning before real DB target usage
+      - agent cannot silently create sandbox
+  - id: P12-007
+    title: Define security boundary
+    deliverables:
+      - no raw secret persistence policy
+      - no result row persistence policy
+      - backup path confinement policy
+      - network isolation policy
+      - fail-closed rules
+    acceptance:
+      - safer existing SAFY model is preserved
+      - conflicts resolve toward safety
+      - audit remains metadata-only
+  - id: P12-008
+    title: Define tests and validation gates
+    deliverables:
+      - unit test plan
+      - API test plan
+      - Docker manager test plan
+      - restore/import test plan
+      - query check/execute test plan
+      - UI test plan
+      - full regression plan
+    acceptance:
+      - PASS/BLOCKED/SKIPPED statuses are explicit
+      - private backup restore is env-gated
+      - implementation PASS cannot be claimed by planning
+recommended_implementation_order:
+  - Stage 1: Core sandbox model
+  - Stage 2: PostgreSQL/Supabase-compatible runtime
+  - Stage 3: Query integration
+  - Stage 4: UI Sandbox Manager
+  - Stage 5: Additional DBMS adapters
+  - Stage 6: Env-gated private backup validation

@@ -1,0 +1,95 @@
+phase: 6
+status: ready_for_implementation
+implementation_allowed: true
+execution_mode: main_agent_only
+sub_agents_allowed: false
+
+tasks:
+  - id: P6-001
+    title: Runtime state and schema inventory
+    status: planned
+    dispatchable: true
+    description: Inspect existing runtime DB, audit DB, session state, check state, and workspace metadata contracts.
+    acceptance:
+      - Existing state tables and files are documented.
+      - No migration is applied during planning.
+
+  - id: P6-002
+    title: Session history contract
+    status: planned
+    dispatchable: true
+    description: Define the schema and persistence logic for chat sessions, including message history and agent action logs.
+    acceptance:
+      - Session persistence schema is defined in PHASE_6_CONTRACTS.md.
+
+  - id: P6-003
+    title: Recovery state machine
+    status: planned
+    dispatchable: true
+    description: Design the logic for detecting and resolving interrupted operations (e.g., stale locks, incomplete query checks).
+    acceptance:
+      - Recovery paths for known failure modes are documented.
+
+  - id: P6-004
+    title: Workspace inventory/listing contract
+    status: planned
+    dispatchable: true
+    description: Define the API and data structure for tracking active and inactive sandbox workspaces.
+    acceptance:
+      - Workspace metadata shape is defined.
+
+  - id: P6-005
+    title: Workspace cleanup/retention contract
+    status: planned
+    dispatchable: true
+    description: Define rules for workspace expiration and safe cleanup procedures that preserve necessary audit evidence.
+    acceptance:
+      - Cleanup logic is defined and respects active locks.
+
+  - id: P6-006
+    title: API contract
+    status: planned
+    dispatchable: true
+    description: Define the endpoints for /sessions, /workspaces, and /recovery.
+    acceptance:
+      - PHASE_6_API_SPEC.md includes request/response shapes and error codes.
+
+  - id: P6-007
+    title: UI contract
+    status: planned
+    dispatchable: true
+    description: Define the UI changes for session history browsing and workspace management.
+    acceptance:
+      - PHASE_6_UI_SPEC.md defines layout and rendering rules.
+
+  - id: P6-008
+    title: Audit/redaction contract
+    status: planned
+    dispatchable: true
+    description: Ensure all new Phase 6 operations are fully audited and sensitive data in history is redacted.
+    acceptance:
+      - Redaction rules for history/recovery are documented.
+
+  - id: P6-009
+    title: Tests/validation plan
+    status: planned
+    dispatchable: true
+    description: Create a plan for Phase 6 regression and unit tests.
+    acceptance:
+      - PHASE_6_VALIDATION_CHECKLIST.md is complete.
+
+  - id: P6-010
+    title: Report/gate criteria
+    status: planned
+    dispatchable: true
+    description: Define the final acceptance criteria for Phase 6 implementation.
+    acceptance:
+      - Success criteria are clear and measurable.
+
+  - id: P6-011
+    title: Double-check gate
+    status: planned
+    dispatchable: true
+    description: Main-agent review of all planning artifacts for safety and roadmap alignment.
+    acceptance:
+      - Double-check report confirms zero sub-agent use and adherence to boundaries.

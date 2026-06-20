@@ -1,0 +1,14 @@
+app_name: Safy
+environment: development
+data_paths:
+  user_profiles: Data/User/user_profiles.json
+  database_profiles: Data/Database_management/database_profiles.json
+  schema_graph_dir: Data/SchemaGraph
+  profiles_json: Data/safy_profiles.json
+  sessions_dir: Data/sessions
+  audit_jsonl: Data/audit/safy_audit.jsonl
+  legacy_runtime_db: Data/safy_runtime.db
+  legacy_audit_db: Data/safy_audit.db
+  runtime_db: Data/safy_runtime.db
+  audit_db: Data/safy_audit.db
+high_risk_code_ttl_seconds: 300

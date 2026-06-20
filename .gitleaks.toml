@@ -1,0 +1,12 @@
+title = "SAFY gitleaks config"
+
+[allowlist]
+description = "Ignore local generated runtime data that must never be committed"
+paths = [
+  "Data/secrets/.*",
+  "Data/sessions/.*"
+]
+regexes = [
+  "REDACTED_[A-Z0-9_]+",
+  "Bearer REDACTED_BEARER_TOKEN"
+]

@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "profiles": [
+    {
+      "profile_id": "example_supabase_rpc",
+      "profile_type": "database",
+      "display_name": "Example Supabase RPC",
+      "provider": "supabase",
+      "driver": "supabase_rpc",
+      "dbms": "supabase_rpc",
+      "connection_kind": "supabase_rpc",
+      "execution_transport": "postgrest_rpc",
+      "base_url": "https://PROJECT_ID.supabase.co/rest/v1/",
+      "host": "PROJECT_ID.supabase.co",
+      "port": 443,
+      "database": "supabase_api",
+      "username": "local_user",
+      "api_key_env": "SAFY_DB_EXAMPLE_SUPABASE_API_KEY",
+      "password_env": "SAFY_DB_EXAMPLE_SUPABASE_API_KEY",
+      "secret_env": "SAFY_DB_EXAMPLE_SUPABASE_API_KEY",
+      "secret_mode": "env",
+      "password_mode": "env",
+      "sql_rpc_function": "safy_execute_sql",
+      "read_only": true,
+      "real_db_readonly": true,
+      "user_query_access_mode": "credential_permissions",
+      "active": false
+    }
+  ]
+}

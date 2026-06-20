@@ -1,0 +1,37 @@
+services:
+  database-services-sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: safy-database-services-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      SA_PASSWORD: ${SAFY_DATABASE_SERVICES_SQLSERVER_SA_PASSWORD:-SqlServer_database_services_fake_123!}
+      SAFY_SQLSERVER_PASSWORD: ${SAFY_SQLSERVER_PASSWORD:-safy_ro_database_services_fake_123!}
+    ports:
+      - "${SAFY_DATABASE_SERVICES_SQLSERVER_PORT:-14333}:1433"
+    volumes:
+      - ./database-services/sqlserver-init:/database-services-init:ro
+    command: /opt/mssql/bin/sqlservr
+    healthcheck:
+      test: ["CMD-SHELL", "(/opt/mssql-tools18/bin/sqlcmd -S 127.0.0.1 -U sa -P $$SA_PASSWORD -C -Q 'SELECT 1' || /opt/mssql-tools/bin/sqlcmd -S 127.0.0.1 -U sa -P $$SA_PASSWORD -Q 'SELECT 1') >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  database-services-oracle:
+    image: gvenzl/oracle-free:23-slim
+    container_name: safy-database-services-oracle
+    environment:
+      ORACLE_PASSWORD: ${SAFY_DATABASE_SERVICES_ORACLE_SYS_PASSWORD:-Oracle_database_services_fake_123}
+      APP_USER: safy_seed_owner
+      APP_USER_PASSWORD: ${SAFY_DATABASE_SERVICES_ORACLE_OWNER_PASSWORD:-Oracle_owner_database_services_fake_123}
+      SAFY_ORACLE_PASSWORD: ${SAFY_ORACLE_PASSWORD:-safy_ro_database_services_fake_123}
+    ports:
+      - "${SAFY_DATABASE_SERVICES_ORACLE_PORT:-1522}:1521"
+    volumes:
+      - ./database-services/oracle-init:/container-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 60

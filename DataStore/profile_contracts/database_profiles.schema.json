@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Safy Stage 2 Database Profile",
+  "type": "object",
+  "required": ["profile_id", "display_name", "dbms", "host", "port", "database", "username", "password_env", "user_query_access_mode", "created_at", "updated_at"],
+  "properties": {
+    "profile_id": {"type": "string"},
+    "display_name": {"type": "string"},
+    "dbms": {"type": "string"},
+    "host": {"type": "string"},
+    "port": {"type": "integer"},
+    "database": {"type": "string"},
+    "username": {"type": "string"},
+    "password_env": {"type": "string"},
+    "user_query_access_mode": {"type": "string", "enum": ["credential_permissions", "read_only", "disabled"]},
+    "created_at": {"type": "string"},
+    "updated_at": {"type": "string"}
+  },
+  "additionalProperties": true
+}
