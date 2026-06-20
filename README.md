@@ -1,49 +1,53 @@
 # SAFY
 
-SAFY is a local AI Database Agent and Database Safety Gateway. It provides a local FastAPI backend, a static Web UI, database profile management, SQL safety checks, read-only query display, sandbox-first write/DDL validation, and workflow/audit boundaries between the user/agent and connected databases.
+SAFY is a local-first AI Database Agent and Database Safety Gateway. It provides a web dashboard for connecting to databases, asking database questions, generating SQL, validating SQL through a sandbox, and executing approved operations through a guarded workflow.
 
-The canonical project status document is:
+SAFY is designed for local development and controlled database operations. It is not an unrestricted production DBA tool.
+
+---
+
+## Highlights
+
+- Local dashboard at `http://127.0.0.1:8000/`
+- Chat-based database assistant
+- Read-only data display directly in chat
+- Execute Box for reviewing generated SQL
+- SQL safety classification before execution
+- Sandbox-first validation for write and DDL statements
+- Supabase RPC execution path
+- PostgreSQL/MySQL/SQLite-oriented driver layer
+- Model profile management through OpenAI-compatible endpoints
+- Database profile management with local environment secrets
+- Workflow state, audit boundary, and redaction rules
+- Dark/light UI mode
+- Client-side streaming/typewriter UI
+- Auto-run read-only setting
+
+---
+
+## Safety Model
+
+SAFY separates database operations by risk class.
+
+| Operation type | Example | Behavior |
+|---|---|---|
+| Read-only | `SELECT * FROM users LIMIT 100` | Runs through read-only guard and returns results in chat |
+| Write | `INSERT`, `UPDATE`, `DELETE` | Requires sandbox check before real execution |
+| DDL | `CREATE TABLE`, `ALTER TABLE` | Requires sandbox check before real execution |
+| Destructive | `DROP`, `TRUNCATE`, broad delete/update | Blocked by default or requires stronger confirmation |
+| Secret access | API keys, passwords, tokens | Blocked/redacted |
+
+Core rule:
 
 ```text
-Docs/SAFY_CURRENT_PROJECT_STATUS.md
+Read-only query → direct guarded read
+Write/DDL query → sandbox validation → explicit Execute → real database
+Destructive query → block or strong confirmation workflow
 ```
 
-Use that document as the source of truth for the current architecture, safety matrix, sandbox workflow, compatibility status, test matrix, and next phases.
-
 ---
 
-## Current Runtime Status
-
-SAFY currently supports:
-
-- Local dashboard at `http://127.0.0.1:8000/`.
-- Model profile management through OpenAI-compatible providers/local routers.
-- Database profile management with secrets stored through local environment variables.
-- Direct read-only query workflow for safe `SELECT`/show-data requests.
-- Execute Box workflow for user-reviewed SQL.
-- Sandbox-first validation for write/DDL SQL before real database execution.
-- Deterministic SQL safety policy and workflow reviewer checks.
-- Supabase execution through RPC when configured.
-- Runtime/audit trace boundaries with row/secret redaction.
-- Dark/light UI mode, client-side streaming/typewriter UI, and auto-run read-only setting.
-
-SAFY is **not** an unrestricted production database administration tool. Destructive SQL such as `DROP` and `TRUNCATE` is blocked or requires a stronger administrative workflow.
-
----
-
-## Safety Boundary
-
-| Operation | Current behavior |
-|---|---|
-| `SELECT` / show data | Guarded read-only execution, no sandbox required |
-| Broad/sensitive `SELECT` | May be limited, blocked, or require confirmation depending on policy |
-| `CREATE`, `INSERT`, `UPDATE`, `DELETE`, `ALTER` | Draft/review first, then Check Safety in sandbox, then explicit Execute |
-| `DROP`, `TRUNCATE`, permission/server/security statements | Blocked by default or require strong administrative confirmation |
-| Secrets/API keys/passwords | Must stay in `.env` or local environment only; never commit raw secrets |
-
----
-
-## Installation
+## Quick Start
 
 From the repository root:
 
@@ -51,54 +55,154 @@ From the repository root:
 python -m pip install -e .
 ```
 
-Start SAFY and open the dashboard:
+Start SAFY:
 
 ```powershell
 safy run
 ```
 
-Start SAFY without opening a browser:
+Start without opening the browser:
 
 ```powershell
 safy run --no-browser
 ```
 
-The FastAPI app is defined in:
-
-```text
-Apps/Api/safy_api/main.py
-```
-
-The dashboard is served at:
+Open the dashboard:
 
 ```text
 http://127.0.0.1:8000/
 ```
 
-If Windows does not recognize `safy`, make sure Python's Scripts directory is on `PATH`, then retry:
+Check CLI metadata:
 
 ```powershell
 safy info
-safy run --no-browser
 ```
 
 ---
 
-## Optional Database Dependencies
+## Requirements
 
-Install optional database drivers when needed:
+Minimum runtime:
+
+- Python 3.10+
+- Windows PowerShell or CMD
+- Browser for the local dashboard
+
+Optional runtime:
+
+- Docker Desktop for Docker-backed sandbox/database services
+- Database driver dependencies from `requirements-db.txt`
+- Supabase project with RPC setup for Supabase write/DDL execution
+
+Install optional database dependencies:
 
 ```powershell
 python -m pip install -r requirements-db.txt
 ```
 
-Some database targets require local client libraries or Docker services.
+---
+
+## First Setup
+
+### 1. Start the app
+
+```powershell
+safy run --no-browser
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8000/
+```
+
+### 2. Configure a model profile
+
+Use the UI to configure an OpenAI-compatible model endpoint.
+
+Typical profile fields:
+
+```text
+base_url
+model
+api_key_env
+```
+
+Raw API keys must stay in `.env` or OS environment variables. Do not commit real keys.
+
+### 3. Configure a database profile
+
+Use the UI to configure a database connection.
+
+Typical profile fields:
+
+```text
+provider
+driver
+host/base_url
+database
+username
+password_env/api_key_env
+```
+
+Test and activate the profile before using the chat or Execute Box.
+
+### 4. Use the assistant
+
+Read-only example:
+
+```text
+hãy show ra các dữ liệu trong bảng datatest
+```
+
+DDL example:
+
+```sql
+CREATE TABLE STUDENT (
+  thne TEXT
+);
+```
+
+Expected DDL flow:
+
+```text
+SQL draft
+→ Check Safety
+→ sandbox validation
+→ Execute
+→ real database execution
+```
 
 ---
 
-## Docker / Local Database Services
+## Supabase RPC Setup
 
-Current helper scripts use these names:
+For Supabase base URL + API key mode, SAFY uses an RPC execution path for write/DDL operations.
+
+Install the RPC function from:
+
+```text
+Scripts/supabase_safy_execute_sql_rpc.sql
+```
+
+Supabase RPC mode is separate from native PostgreSQL mode.
+
+```text
+Supabase mode:
+base URL + API key + RPC
+
+Native PostgreSQL mode:
+host + port + database + username + password
+```
+
+Write/DDL operations still require SAFY safety checks before real execution.
+
+---
+
+## Docker and Local Database Services
+
+Current helper scripts:
 
 ```powershell
 Scripts\check_docker_runtime.ps1
@@ -108,99 +212,96 @@ Scripts\start_docker_runtime.ps1
 Scripts\stop_docker_runtime.ps1
 ```
 
-Docker local configuration should be based on example files only. Do not commit real Docker `.env` files.
+Example Docker env file:
 
 ```text
 Docker/.env.example
 ```
 
----
-
-## Supabase RPC Setup
-
-For Supabase write/DDL execution through base URL + API key mode, install the RPC function in your Supabase project:
-
-```text
-Scripts/supabase_safy_execute_sql_rpc.sql
-```
-
-Supabase base URL + API key mode is separate from native PostgreSQL password/host/port mode. SAFY still applies SQL Guard and sandbox-first validation before real write/DDL execution.
+Do not commit real Docker `.env` files.
 
 ---
 
-## Basic Usage
+## Main API Endpoints
 
-1. Start the backend with `safy run`.
-2. Open `http://127.0.0.1:8000/`.
-3. Create/select a model profile.
-4. Create/select a database profile.
-5. Test the database connection.
-6. Refresh/load schema context.
-7. Use chat or Execute Box.
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/health` | Backend health check |
+| `POST` | `/agent/chat` | Main chat workflow |
+| `GET` | `/agent/skills` | List registered skills |
+| `GET` | `/agent/tools` | List registered tools |
+| `GET` | `/agent/state/{chat_id}` | Inspect session state |
+| `GET` | `/agent/workflow/{chat_id}` | Inspect workflow trace |
+| `POST` | `/query/check` | Check SQL safety |
+| `POST` | `/query/execute` | Execute approved SQL |
+| `GET` | `/database-profiles` | List database profiles |
+| `POST` | `/database-profiles` | Save database profile |
+| `GET` | `/model-profiles` | List model profiles |
+| `POST` | `/model-profiles` | Save model profile |
+| `GET` | `/schema-graph/active` | Read active schema graph |
+| `POST` | `/schema-graph/active/refresh` | Refresh active schema graph |
 
-Read-only example:
+---
 
-```text
-hãy show ra các dữ liệu trong bảng datatest
-```
-
-Write/DDL example:
-
-```sql
-CREATE TABLE STUDENT (
-  thne TEXT
-);
-```
-
-Expected DDL workflow:
+## Project Structure
 
 ```text
-SQL draft
-→ Check Safety
-→ sandbox validation
-→ explicit Execute
-→ real database execution
+Agent/        Agent runtime and schema context
+Apps/Api/     FastAPI backend
+Apps/Web/     Static dashboard UI
+Audit/        Audit schema, store, logger
+Configs/      Runtime configuration
+Contracts/    API/contracts/spec references
+Core/         Workflow state, policy, reviewer, registries
+Data/         Example/runtime data boundary
+DataStore/    Profile/env/schema stores
+Docker/       Docker compose files and examples
+Docs/         Canonical documentation
+Gateway/      SQL guard, query orchestrator, database adapters
+LLM/          Model profile/provider adapters
+Logging/      Logging helpers
+Providers/    Provider registry and demo/mock providers
+Sandbox/      Sandbox manager, Docker manager, workspace lifecycle
+Scripts/      Local helper scripts and setup utilities
+Skills/       Skill packages and runtimes
+State/        Runtime/session/workflow state
+Tools/        Tool registry, schemas, SQL/database/sandbox tools
+Toolsets/     Runtime toolset helpers
+```
+
+Canonical project status document:
+
+```text
+Docs/SAFY_CURRENT_PROJECT_STATUS.md
 ```
 
 ---
 
-## Important API Endpoints
+## Development Checks
 
-```text
-GET  /health
-POST /agent/chat
-GET  /agent/skills
-GET  /agent/tools
-GET  /agent/state/{chat_id}
-GET  /agent/workflow/{chat_id}
-POST /query/check
-POST /query/execute
-GET  /database-profiles
-POST /database-profiles
-GET  /model-profiles
-POST /model-profiles
-GET  /schema-graph/active
-POST /schema-graph/active/refresh
-```
-
-All real database execution must pass through the guarded query workflow.
-
----
-
-## Static Validation
-
-Run these checks after changes:
+Run static validation:
 
 ```powershell
 python -m compileall -q Agent Core Tools State Apps/Api/safy_api Gateway Skills Audit DataStore LLM Providers Sandbox Toolsets
 node --check Apps/Web/safy-ui.js
 ```
 
-If/when a committed test suite exists, place it under a canonical `Tests/` folder and update this README with exact commands. The current package configuration does not require a `Tests` package.
+Run install check:
+
+```powershell
+python -m pip install -e . --dry-run
+python -m pip install -e .
+```
+
+Run the server:
+
+```powershell
+safy run --no-browser
+```
 
 ---
 
-## Push-clean / Git Safety
+## Git Safety
 
 Before pushing:
 
@@ -208,7 +309,7 @@ Before pushing:
 gitleaks detect --source . --verbose
 ```
 
-Runtime/local-only files must not be committed:
+Never commit:
 
 ```text
 .env
@@ -237,43 +338,51 @@ git rm --cached -r --ignore-unmatch Sandbox/workspaces
 
 ---
 
-## Project Structure
-
-```text
-Agent/        Agent runtime and schema context
-Apps/Api/     FastAPI backend
-Apps/Web/     Static dashboard UI
-Audit/        Audit schema/store/logger
-Configs/      Runtime configuration
-Core/         Workflow state, policy, reviewer, registries
-DataStore/    Profile/env/schema stores
-Gateway/      SQL guard, query orchestrator, DB adapters
-LLM/          Model profile/provider adapters
-Providers/    Provider registry and mock/demo providers
-Sandbox/      Sandbox manager, Docker manager, workspace lifecycle
-Scripts/      Local helper scripts and setup utilities
-Skills/       Skill packages and runtimes
-State/        Runtime/session/workflow state
-Tools/        Tool registry, schemas, SQL/database/sandbox tools
-Toolsets/     Runtime toolset helpers
-Docs/         Canonical docs, reports, and architecture notes
-```
-
----
-
 ## Troubleshooting
 
 ### `package directory 'Tests' does not exist`
 
-This was caused by `pyproject.toml` listing a `Tests` package while the repository did not contain a `Tests/` directory. The package list should not include `Tests` unless that folder exists and is committed.
+The package list should not include `Tests` unless the repository contains a committed `Tests/` package.
+
+Check:
+
+```powershell
+python -m pip install -e . --dry-run
+```
+
+### `safy` is not recognized
+
+Ensure Python Scripts is on `PATH`, then reopen the terminal.
+
+Typical user-level paths on Windows include:
+
+```text
+%APPDATA%\Python\Python312\Scripts
+%LOCALAPPDATA%\Microsoft\WindowsApps
+```
 
 ### `SANDBOX_SECRET_MISSING`
 
-The real database key may exist in `.env`, but sandbox internal credential references may be stale or missing. Reconnect/save the database profile, ensure sandbox, or clear stale local runtime sandbox state and let SAFY recreate it.
+The real database key may exist in `.env`, but sandbox internal credential references may be stale.
+
+Recommended recovery:
+
+```text
+1. Restart SAFY.
+2. Reconnect or save the database profile.
+3. Ensure sandbox again.
+4. If needed, clear stale local Data/sandboxes and Data/secrets, then recreate sandbox.
+```
 
 ### SELECT still asks for Execute
 
-Check the auto-run read-only UI setting and verify the backend classifies the request as `READ_ONLY_SQL`.
+Check:
+
+```text
+- Auto-run read-only setting is enabled.
+- The generated SQL is classified as READ_ONLY_SQL.
+- Browser cache is refreshed with Ctrl+F5.
+```
 
 ### Write/DDL does not auto-run
 
@@ -281,12 +390,26 @@ This is expected. Write/DDL must pass sandbox validation and explicit user execu
 
 ---
 
+## Documentation
+
+Main documents:
+
+```text
+Docs/SAFY_CURRENT_PROJECT_STATUS.md
+Docs/DOCUMENTATION_INDEX.md
+```
+
+Patch reports and older architecture notes may exist under `Docs/` and `Docs/Hermes_Execution/`. The current status document is the primary reference for architecture and safety policy.
+
+---
+
 ## Roadmap
 
-Next major work should focus on:
+Next major work:
 
 1. Canonical regression tests.
-2. Text_to_query v2 with examples/tests/templates.
+2. `Text_to_query` v2 with examples, tests, templates, and deterministic Vietnamese intent handling.
 3. Tool trace/debug UI.
-4. True backend streaming through SSE/WebSocket.
+4. True backend streaming through SSE or WebSocket.
 5. Broader live validation for optional database drivers.
+6. Documentation cleanup and stable release checklist.
