@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "domain_id",
+    "domain_name",
+    "owner",
+    "supported_database_types"
+  ],
+  "properties": {
+    "domain_id": {
+      "type": "string"
+    },
+    "domain_name": {
+      "type": "string"
+    },
+    "domain_description": {
+      "type": "string"
+    },
+    "owner": {
+      "type": "string"
+    },
+    "supported_database_types": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": true
+}

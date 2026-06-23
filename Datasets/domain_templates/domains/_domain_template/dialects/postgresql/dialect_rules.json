@@ -1,0 +1,10 @@
+{
+  "database_type": "postgresql",
+  "pagination_syntax": "LIMIT",
+  "upsert_notes": "Use INSERT ... ON CONFLICT ... DO UPDATE.",
+  "forbidden": [
+    "real credentials",
+    "production data",
+    "unapproved destructive SQL"
+  ]
+}

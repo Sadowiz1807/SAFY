@@ -1,0 +1,9 @@
+{
+  "provider": "google_cloud_sql",
+  "database_types": [
+    "sqlserver"
+  ],
+  "overlay_type": "deployment_provider",
+  "redefines_sql_dialect": false,
+  "credentials_included": false
+}

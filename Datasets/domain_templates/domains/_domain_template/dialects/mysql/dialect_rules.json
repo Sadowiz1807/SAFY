@@ -1,0 +1,10 @@
+{
+  "database_type": "mysql",
+  "pagination_syntax": "LIMIT",
+  "upsert_notes": "Use INSERT ... ON DUPLICATE KEY UPDATE.",
+  "forbidden": [
+    "real credentials",
+    "production data",
+    "unapproved destructive SQL"
+  ]
+}

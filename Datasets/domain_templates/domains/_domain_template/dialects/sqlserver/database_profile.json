@@ -1,0 +1,16 @@
+{
+  "database_type": "sqlserver",
+  "database_engine": "sqlserver",
+  "sql_dialect": "tsql",
+  "driver": "sqlserver",
+  "provider": "self_hosted",
+  "execution_transport": "native_driver",
+  "identity_syntax": "IDENTITY(1,1)",
+  "string_type": "NVARCHAR(255)",
+  "datetime_type": "DATETIME2",
+  "boolean_type": "BIT",
+  "json_type": "NVARCHAR(MAX)",
+  "pagination_syntax": "TOP or OFFSET FETCH",
+  "upsert_notes": "Use MERGE or guarded UPDATE/INSERT patterns.",
+  "validation_method": "Static validation only; do not connect to real databases."
+}

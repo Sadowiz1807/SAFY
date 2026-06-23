@@ -1,0 +1,21 @@
+{
+  "read": [
+    "list",
+    "count",
+    "lookup",
+    "aggregate"
+  ],
+  "write": [
+    "create",
+    "update",
+    "delete"
+  ],
+  "ddl": [
+    "create_table",
+    "alter_table"
+  ],
+  "meta": [
+    "explain_schema",
+    "answer_only"
+  ]
+}

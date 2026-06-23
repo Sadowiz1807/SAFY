@@ -1,0 +1,20 @@
+{
+  "read": [
+    {
+      "intent": "list_{{ENTITY_NAME}}",
+      "template": "List {{ENTITY_NAME}} records."
+    }
+  ],
+  "write": [
+    {
+      "intent": "create_{{ENTITY_NAME}}",
+      "template": "Create a {{ENTITY_NAME}} after confirmation."
+    }
+  ],
+  "ddl": [
+    {
+      "intent": "add_{{COLUMN_NAME}}",
+      "template": "Request schema change for {{TABLE_NAME}}."
+    }
+  ]
+}

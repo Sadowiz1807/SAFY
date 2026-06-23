@@ -1,0 +1,9 @@
+{
+  "provider": "aws_aurora",
+  "database_types": [
+    "mysql"
+  ],
+  "overlay_type": "deployment_provider",
+  "redefines_sql_dialect": false,
+  "credentials_included": false
+}

@@ -1,0 +1,10 @@
+{
+  "database_type": "supabase_rpc",
+  "pagination_syntax": "LIMIT",
+  "upsert_notes": "Use PostgreSQL ON CONFLICT inside approved RPC functions.",
+  "forbidden": [
+    "real credentials",
+    "production data",
+    "unapproved destructive SQL"
+  ]
+}

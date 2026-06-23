@@ -1,0 +1,10 @@
+{
+  "database_type": "sqlite",
+  "pagination_syntax": "LIMIT",
+  "upsert_notes": "Use INSERT OR REPLACE or ON CONFLICT where supported.",
+  "forbidden": [
+    "real credentials",
+    "production data",
+    "unapproved destructive SQL"
+  ]
+}

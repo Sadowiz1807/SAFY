@@ -1,0 +1,6 @@
+-- Placeholder schema for sqlite; do not execute against production.
+CREATE TABLE {{TABLE_NAME}} (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  {{COLUMN_NAME}} TEXT NOT NULL,
+  created_at TEXT
+);

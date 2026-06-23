@@ -1,0 +1,18 @@
+{
+  "terms": [
+    {
+      "term": "{{ENTITY_NAME}}",
+      "definition": "Business meaning for {{ENTITY_NAME}}."
+    },
+    {
+      "term": "{{COLUMN_NAME}}",
+      "definition": "Business meaning for {{COLUMN_NAME}}."
+    }
+  ],
+  "ambiguity_rules": [
+    {
+      "phrase": "recent {{ENTITY_NAME}}",
+      "resolution": "Ask for date range if not provided."
+    }
+  ]
+}

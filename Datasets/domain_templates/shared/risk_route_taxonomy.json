@@ -1,0 +1,27 @@
+{
+  "risk_classes": [
+    "READ_ONLY_SQL",
+    "WRITE_SQL",
+    "DDL_SQL",
+    "DESTRUCTIVE_SQL",
+    "SECRET_ACCESS",
+    "UNKNOWN_RISK",
+    "META"
+  ],
+  "routes": [
+    "DIRECT_READ_ONLY",
+    "SANDBOX_THEN_REAL",
+    "BLOCK",
+    "CLARIFY",
+    "ANSWER_ONLY"
+  ],
+  "defaults": {
+    "READ_ONLY_SQL": "DIRECT_READ_ONLY",
+    "WRITE_SQL": "SANDBOX_THEN_REAL",
+    "DDL_SQL": "CLARIFY",
+    "DESTRUCTIVE_SQL": "BLOCK",
+    "SECRET_ACCESS": "BLOCK",
+    "UNKNOWN_RISK": "CLARIFY",
+    "META": "ANSWER_ONLY"
+  }
+}

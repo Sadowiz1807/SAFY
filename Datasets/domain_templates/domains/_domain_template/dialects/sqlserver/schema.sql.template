@@ -1,0 +1,6 @@
+-- Placeholder schema for sqlserver; do not execute against production.
+CREATE TABLE {{TABLE_NAME}} (
+  id IDENTITY(1,1),
+  {{COLUMN_NAME}} NVARCHAR(255) NOT NULL,
+  created_at DATETIME2
+);

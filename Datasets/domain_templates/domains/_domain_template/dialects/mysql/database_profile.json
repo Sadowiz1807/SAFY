@@ -1,0 +1,16 @@
+{
+  "database_type": "mysql",
+  "database_engine": "mysql",
+  "sql_dialect": "mysql",
+  "driver": "mysql",
+  "provider": "self_hosted",
+  "execution_transport": "native_driver",
+  "identity_syntax": "AUTO_INCREMENT",
+  "string_type": "VARCHAR(255)",
+  "datetime_type": "DATETIME",
+  "boolean_type": "BOOLEAN",
+  "json_type": "JSON",
+  "pagination_syntax": "LIMIT",
+  "upsert_notes": "Use INSERT ... ON DUPLICATE KEY UPDATE.",
+  "validation_method": "Static validation only; do not connect to real databases."
+}

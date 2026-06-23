@@ -1,0 +1,6 @@
+-- Placeholder schema for mysql; do not execute against production.
+CREATE TABLE {{TABLE_NAME}} (
+  id AUTO_INCREMENT,
+  {{COLUMN_NAME}} VARCHAR(255) NOT NULL,
+  created_at DATETIME
+);

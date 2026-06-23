@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "id",
+    "domain",
+    "schema_id",
+    "database_type",
+    "database_engine",
+    "sql_dialect",
+    "provider",
+    "execution_transport",
+    "language",
+    "user_message",
+    "conversation_context",
+    "schema_context",
+    "intent",
+    "slots",
+    "canonical_query",
+    "expected_sql",
+    "risk_class",
+    "expected_route",
+    "requires_sandbox",
+    "requires_confirmation",
+    "difficulty",
+    "tags",
+    "validation"
+  ],
+  "properties": {
+    "id": {},
+    "domain": {},
+    "schema_id": {},
+    "database_type": {},
+    "database_engine": {},
+    "sql_dialect": {},
+    "provider": {},
+    "execution_transport": {},
+    "language": {},
+    "user_message": {},
+    "conversation_context": {},
+    "schema_context": {},
+    "intent": {},
+    "slots": {},
+    "canonical_query": {},
+    "expected_sql": {},
+    "risk_class": {
+      "enum": [
+        "READ_ONLY_SQL",
+        "WRITE_SQL",
+        "DDL_SQL",
+        "DESTRUCTIVE_SQL",
+        "SECRET_ACCESS",
+        "UNKNOWN_RISK",
+        "META"
+      ]
+    },
+    "expected_route": {
+      "enum": [
+        "DIRECT_READ_ONLY",
+        "SANDBOX_THEN_REAL",
+        "BLOCK",
+        "CLARIFY",
+        "ANSWER_ONLY"
+      ]
+    },
+    "requires_sandbox": {},
+    "requires_confirmation": {},
+    "difficulty": {},
+    "tags": {},
+    "validation": {}
+  },
+  "additionalProperties": false
+}

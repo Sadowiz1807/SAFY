@@ -1,0 +1,2 @@
+-- Placeholder synthetic seed for postgresql; replace with synthetic values only.
+INSERT INTO {{TABLE_NAME}} ({{COLUMN_NAME}}) VALUES ('{{ENTITY_NAME}} sample');

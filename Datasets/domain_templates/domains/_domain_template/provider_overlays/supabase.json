@@ -1,0 +1,10 @@
+{
+  "provider": "supabase",
+  "database_types": [
+    "supabase_rpc"
+  ],
+  "execution_transport": "postgrest_rpc",
+  "overlay_type": "deployment_provider",
+  "redefines_sql_dialect": false,
+  "credentials_included": false
+}

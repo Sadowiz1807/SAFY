@@ -1,0 +1,16 @@
+{
+  "database_type": "sqlite",
+  "database_engine": "sqlite",
+  "sql_dialect": "sqlite",
+  "driver": "sqlite",
+  "provider": "self_hosted",
+  "execution_transport": "native_driver",
+  "identity_syntax": "INTEGER PRIMARY KEY AUTOINCREMENT",
+  "string_type": "TEXT",
+  "datetime_type": "TEXT",
+  "boolean_type": "INTEGER",
+  "json_type": "TEXT",
+  "pagination_syntax": "LIMIT",
+  "upsert_notes": "Use INSERT OR REPLACE or ON CONFLICT where supported.",
+  "validation_method": "Static validation only; do not connect to real databases."
+}

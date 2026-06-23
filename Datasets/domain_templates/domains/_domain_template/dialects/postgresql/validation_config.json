@@ -1,0 +1,9 @@
+{
+  "database_type": "postgresql",
+  "validation_method": "static_template_validation",
+  "execute_sql": false,
+  "required_placeholders": [
+    "{{TABLE_NAME}}",
+    "{{COLUMN_NAME}}"
+  ]
+}

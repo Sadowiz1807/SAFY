@@ -1,0 +1,11 @@
+{
+  "multi_turn": [
+    {
+      "user": "Show {{ENTITY_NAME}}.",
+      "follow_up": "Only include records where {{COLUMN_NAME}} is known."
+    }
+  ],
+  "clarifications": [
+    "Which {{COLUMN_NAME}} value should be used?"
+  ]
+}

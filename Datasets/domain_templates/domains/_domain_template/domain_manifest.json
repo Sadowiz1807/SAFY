@@ -1,0 +1,14 @@
+{
+  "domain_id": "{{DOMAIN_ID}}",
+  "domain_name": "{{DOMAIN_NAME}}",
+  "domain_description": "{{DOMAIN_DESCRIPTION}}",
+  "owner": "{{OWNER}}",
+  "supported_database_types": [
+    "sqlite",
+    "mysql",
+    "postgresql",
+    "sqlserver",
+    "oracle",
+    "supabase_rpc"
+  ]
+}

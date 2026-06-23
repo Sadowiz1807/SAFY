@@ -1,0 +1,7 @@
+{
+  "json_valid": true,
+  "no_real_secrets": true,
+  "placeholder_only": true,
+  "database_type_count": 6,
+  "sql_not_executed": true
+}

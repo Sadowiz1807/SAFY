@@ -1,0 +1,10 @@
+{
+  "database_type": "sqlserver",
+  "pagination_syntax": "TOP or OFFSET FETCH",
+  "upsert_notes": "Use MERGE or guarded UPDATE/INSERT patterns.",
+  "forbidden": [
+    "real credentials",
+    "production data",
+    "unapproved destructive SQL"
+  ]
+}

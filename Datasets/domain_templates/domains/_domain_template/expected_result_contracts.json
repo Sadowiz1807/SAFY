@@ -1,0 +1,14 @@
+{
+  "read_result": {
+    "format": "rows",
+    "must_include": [
+      "{{COLUMN_NAME}}"
+    ]
+  },
+  "write_result": {
+    "requires_confirmation": true
+  },
+  "ddl_result": {
+    "requires_review": true
+  }
+}

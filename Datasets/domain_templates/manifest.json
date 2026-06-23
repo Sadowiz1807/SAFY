@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "database_types": [
+    "sqlite",
+    "mysql",
+    "postgresql",
+    "sqlserver",
+    "oracle",
+    "supabase_rpc"
+  ],
+  "providers": [
+    "self_hosted",
+    "supabase",
+    "google_cloud_sql",
+    "aws_aurora"
+  ],
+  "note": "Cloud providers are deployment overlays, not SQL dialects."
+}

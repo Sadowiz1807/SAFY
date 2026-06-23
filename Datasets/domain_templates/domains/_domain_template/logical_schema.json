@@ -1,0 +1,17 @@
+{
+  "schema_id": "{{DOMAIN_ID}}_logical_v1",
+  "entities": [
+    {
+      "name": "{{ENTITY_NAME}}",
+      "table": "{{TABLE_NAME}}",
+      "columns": [
+        {
+          "name": "{{COLUMN_NAME}}",
+          "type": "string",
+          "nullable": false
+        }
+      ]
+    }
+  ],
+  "relationships": []
+}

@@ -1,0 +1,10 @@
+{
+  "database_type": "oracle",
+  "pagination_syntax": "FETCH FIRST",
+  "upsert_notes": "Use MERGE INTO.",
+  "forbidden": [
+    "real credentials",
+    "production data",
+    "unapproved destructive SQL"
+  ]
+}
