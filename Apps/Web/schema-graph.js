@@ -22,6 +22,16 @@ const graphView = {
   panStartY: 0,
   originX: 0,
   originY: 0,
+  draggingNodeId: null,
+  dragPointerId: null,
+  dragStartX: 0,
+  dragStartY: 0,
+  dragOriginX: 0,
+  dragOriginY: 0,
+  layout: null,
+  nodeById: null,
+  relationships: [],
+  edgeLayer: null,
 };
 
 function applyStoredTheme() {
@@ -349,6 +359,7 @@ function createNodeElement(node, position) {
 
   const header = document.createElement('header');
   header.className = 'schema-node-header';
+  header.title = 'Drag to reposition this table';
   const titleWrap = document.createElement('div');
   titleWrap.className = 'schema-node-title-wrap';
   const schema = document.createElement('span');
@@ -375,6 +386,83 @@ function createNodeElement(node, position) {
 
   card.append(header, columns);
   return card;
+}
+
+function redrawRelationshipEdges() {
+  if (!graphView.edgeLayer || !graphView.nodeById || !graphView.layout) return;
+  graphView.edgeLayer.replaceChildren();
+  renderEdges(graphView.edgeLayer, graphView.relationships, graphView.nodeById, graphView.layout);
+}
+
+function expandGraphStageFor(position) {
+  const requiredWidth = Math.ceil(position.x + position.width + 72);
+  const requiredHeight = Math.ceil(position.y + position.height + 72);
+  const nextWidth = Math.max(graphView.graphWidth, requiredWidth);
+  const nextHeight = Math.max(graphView.graphHeight, requiredHeight);
+  if (nextWidth === graphView.graphWidth && nextHeight === graphView.graphHeight) return;
+
+  graphView.graphWidth = nextWidth;
+  graphView.graphHeight = nextHeight;
+  if (graphView.stage) {
+    graphView.stage.style.width = `${nextWidth}px`;
+    graphView.stage.style.height = `${nextHeight}px`;
+  }
+  if (graphView.edgeLayer) {
+    graphView.edgeLayer.setAttribute('width', String(nextWidth));
+    graphView.edgeLayer.setAttribute('height', String(nextHeight));
+    graphView.edgeLayer.setAttribute('viewBox', `0 0 ${nextWidth} ${nextHeight}`);
+  }
+}
+
+function finishNodeDrag(event, card) {
+  if (graphView.draggingNodeId === null || event.pointerId !== graphView.dragPointerId) return;
+  graphView.draggingNodeId = null;
+  graphView.dragPointerId = null;
+  card.classList.remove('is-dragging');
+  graphView.viewport?.classList.remove('is-dragging-node');
+  if (card.hasPointerCapture(event.pointerId)) card.releasePointerCapture(event.pointerId);
+}
+
+function bindNodeDragging(card) {
+  const header = card.querySelector('.schema-node-header');
+  if (!header) return;
+
+  header.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || !graphView.layout) return;
+    const nodeId = card.dataset.nodeId;
+    const position = graphView.layout.get(nodeId);
+    if (!position) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    graphView.draggingNodeId = nodeId;
+    graphView.dragPointerId = event.pointerId;
+    graphView.dragStartX = event.clientX;
+    graphView.dragStartY = event.clientY;
+    graphView.dragOriginX = position.x;
+    graphView.dragOriginY = position.y;
+    card.classList.add('is-dragging');
+    graphView.viewport?.classList.add('is-dragging-node');
+    card.setPointerCapture(event.pointerId);
+  });
+
+  card.addEventListener('pointermove', (event) => {
+    if (graphView.draggingNodeId !== card.dataset.nodeId || event.pointerId !== graphView.dragPointerId) return;
+    const position = graphView.layout?.get(card.dataset.nodeId);
+    if (!position) return;
+
+    const dx = (event.clientX - graphView.dragStartX) / graphView.scale;
+    const dy = (event.clientY - graphView.dragStartY) / graphView.scale;
+    position.x = Math.max(12, graphView.dragOriginX + dx);
+    position.y = Math.max(12, graphView.dragOriginY + dy);
+    card.style.left = `${position.x}px`;
+    card.style.top = `${position.y}px`;
+    expandGraphStageFor(position);
+    redrawRelationshipEdges();
+  });
+
+  card.addEventListener('pointerup', (event) => finishNodeDrag(event, card));
+  card.addEventListener('pointercancel', (event) => finishNodeDrag(event, card));
 }
 
 function updateGraphTransform() {
@@ -497,6 +585,10 @@ function renderGraph(graph) {
   graphView.stage = null;
   graphView.graphWidth = 0;
   graphView.graphHeight = 0;
+  graphView.layout = null;
+  graphView.nodeById = null;
+  graphView.relationships = [];
+  graphView.edgeLayer = null;
 
   if (!ready) {
     const empty = document.createElement('div');
@@ -524,13 +616,21 @@ function renderGraph(graph) {
 
   const nodeLayer = document.createElement('div');
   nodeLayer.className = 'schema-node-layer';
-  nodes.forEach((node) => nodeLayer.appendChild(createNodeElement(node, layout.get(node.id))));
+  nodes.forEach((node) => {
+    const card = createNodeElement(node, layout.get(node.id));
+    bindNodeDragging(card);
+    nodeLayer.appendChild(card);
+  });
 
   stage.append(svg, nodeLayer);
   body.appendChild(stage);
   graphView.stage = stage;
   graphView.graphWidth = width;
   graphView.graphHeight = height;
+  graphView.layout = layout;
+  graphView.nodeById = nodeById;
+  graphView.relationships = relationships;
+  graphView.edgeLayer = svg;
   resetGraphView();
   requestAnimationFrame(fitGraph);
 }

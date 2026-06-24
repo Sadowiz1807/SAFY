@@ -1,0 +1,117 @@
+{
+  "built_at": "2026-06-24T13:03:27.440530+00:00",
+  "domains": [
+    {
+      "build_status": "passed",
+      "checksum": "sha256:27e4b4f43dc357d1dd18a483d1f85b95ff12d9b2b32dd8f86e2f7c3c43b48960",
+      "compatibility": {
+        "minimum_safy_version": "1.1.0"
+      },
+      "domain_id": "banking_finance",
+      "enabled": true,
+      "pack_version": "1.0.0",
+      "path": "DomainIntelligence/packs/banking_finance/1.0.0/banking_finance.safy-domain"
+    },
+    {
+      "build_status": "passed",
+      "checksum": "sha256:c000f6a8f43acf4f3153a7db0e0ad1046cf98acc8a042a9c325588898ca079df",
+      "compatibility": {
+        "minimum_safy_version": "1.1.0"
+      },
+      "domain_id": "crm_sales",
+      "enabled": true,
+      "pack_version": "1.0.0",
+      "path": "DomainIntelligence/packs/crm_sales/1.0.0/crm_sales.safy-domain"
+    },
+    {
+      "build_status": "passed",
+      "checksum": "sha256:526018a4853de28bfa4f962d6b21a0c3b4eda8bfd176b51ba83e0a78932a5a93",
+      "compatibility": {
+        "minimum_safy_version": "1.1.0"
+      },
+      "domain_id": "ecommerce",
+      "enabled": true,
+      "pack_version": "1.0.0",
+      "path": "DomainIntelligence/packs/ecommerce/1.0.0/ecommerce.safy-domain"
+    },
+    {
+      "build_status": "passed",
+      "checksum": "sha256:7f76e311efcc954fceda1724cd8e1d4a1fa7f5fc408d99aea04d28d95ab1eaa7",
+      "compatibility": {
+        "minimum_safy_version": "1.1.0"
+      },
+      "domain_id": "education",
+      "enabled": true,
+      "pack_version": "1.0.0",
+      "path": "DomainIntelligence/packs/education/1.0.0/education.safy-domain"
+    },
+    {
+      "build_status": "passed",
+      "checksum": "sha256:7995ad4600aa84e6e2a18503b97cf20dd5f547b998a291af0bdaf6830673d5fd",
+      "compatibility": {
+        "minimum_safy_version": "1.1.0"
+      },
+      "domain_id": "healthcare",
+      "enabled": true,
+      "pack_version": "1.0.0",
+      "path": "DomainIntelligence/packs/healthcare/1.0.0/healthcare.safy-domain"
+    },
+    {
+      "build_status": "passed",
+      "checksum": "sha256:52727d0a81d1888cdf218c9684dd5c52b43b30fa7116435bd06a58dd5498eccf",
+      "compatibility": {
+        "minimum_safy_version": "1.1.0"
+      },
+      "domain_id": "hotel_booking",
+      "enabled": true,
+      "pack_version": "1.0.0",
+      "path": "DomainIntelligence/packs/hotel_booking/1.0.0/hotel_booking.safy-domain"
+    },
+    {
+      "build_status": "passed",
+      "checksum": "sha256:027dbd44d79627d9b489b7a2a0c1756128f0e85bb7183ef0dc8140373d13a95a",
+      "compatibility": {
+        "minimum_safy_version": "1.1.0"
+      },
+      "domain_id": "human_resources",
+      "enabled": true,
+      "pack_version": "1.0.0",
+      "path": "DomainIntelligence/packs/human_resources/1.0.0/human_resources.safy-domain"
+    },
+    {
+      "build_status": "passed",
+      "checksum": "sha256:c175f5606b04d6da2138c724fc8fb7da1ac32c473849ccc099896227ef549969",
+      "compatibility": {
+        "minimum_safy_version": "1.1.0"
+      },
+      "domain_id": "inventory_logistics",
+      "enabled": true,
+      "pack_version": "1.0.0",
+      "path": "DomainIntelligence/packs/inventory_logistics/1.0.0/inventory_logistics.safy-domain"
+    },
+    {
+      "build_status": "passed",
+      "checksum": "sha256:50c246cc5cc8b17f346be0e44de0f86fff9ee40a234dcfa674bc167a38fabff1",
+      "compatibility": {
+        "minimum_safy_version": "1.1.0"
+      },
+      "domain_id": "saas_analytics",
+      "enabled": true,
+      "pack_version": "1.0.0",
+      "path": "DomainIntelligence/packs/saas_analytics/1.0.0/saas_analytics.safy-domain"
+    },
+    {
+      "build_status": "passed",
+      "checksum": "sha256:421a047e364ff117341542e4abe1343188548e0171c55b2f525ac990b375cbb5",
+      "compatibility": {
+        "minimum_safy_version": "1.1.0"
+      },
+      "domain_id": "social_content",
+      "enabled": true,
+      "pack_version": "1.0.0",
+      "path": "DomainIntelligence/packs/social_content/1.0.0/social_content.safy-domain"
+    }
+  ],
+  "format": "safy-domain-registry",
+  "format_version": "1.0.0"
+}

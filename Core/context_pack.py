@@ -18,6 +18,7 @@ class ContextPack:
     database_profile_id: str | None
     database_profile: dict[str, Any] | None = None
     schema_summary: str = ""
+    domain_context: dict[str, Any] | None = None
     state: AgentWorkflowState = field(default_factory=AgentWorkflowState)
     available_skills: list[str] = field(default_factory=list)
 
@@ -43,6 +44,7 @@ class ContextPack:
             "database_profile_id": self.database_profile_id,
             "database_profile": safe_profile,
             "schema_summary": self.schema_summary,
+            "domain_context": self.domain_context,
             "state": self.state.to_dict(),
             "available_skills": list(self.available_skills or []),
         }
@@ -55,6 +57,9 @@ class ContextPack:
         pending = "none"
         if state.has_pending():
             pending = f"{state.pending_skill}.{state.pending_action}; missing={state.missing_slots()}; filled={state.filled_slots}"
+        domain_text = ""
+        if isinstance(self.domain_context, dict):
+            domain_text = self.domain_context.get("prompt_text") or ""
         return (
             "SAFY context pack\n"
             f"- session_id: {self.session_id or 'none'}\n"
@@ -66,5 +71,6 @@ class ContextPack:
             f"- has_last_sql: {bool(state.last_sql)}\n"
             f"- last_check_id: {state.last_check_id or 'none'}\n"
             f"- available_skills: {', '.join(self.available_skills or [])}\n\n"
-            f"Schema context:\n{schema or 'No schema context available.'}"
+            f"Schema context:\n{schema or 'No schema context available.'}\n\n"
+            f"{domain_text}"
         )

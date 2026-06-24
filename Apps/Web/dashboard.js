@@ -18,6 +18,7 @@ let safyUiSettings = { ...SAFY_DEFAULT_UI_SETTINGS };
 
 let safySlashCommandIndex = 0;
 let safyContextSources = [];
+let safyChatRequestPending = false;
 const SAFY_CONTEXT_MAX_SOURCES = 5;
 const SAFY_CONTEXT_MAX_FILE_BYTES = 1024 * 1024;
 const SAFY_SIDEBAR_STATE_KEY = 'safy_sidebar_state_v1';
@@ -665,6 +666,52 @@ function buildQueryResultCard(data = {}, fallbackSql = '') {
     card.appendChild(makeElement('div', 'safy-result-footnote', `Đang hiển thị 50 dòng đầu tiên; còn ${rows.length - 50} dòng bị ẩn trong preview.`));
   }
   return card;
+}
+
+function setChatRequestPending(pending) {
+  safyChatRequestPending = Boolean(pending);
+  const sendButton = document.getElementById('send-message-btn');
+  const inputWrapper = document.querySelector('.chat-input-wrapper');
+  const messages = document.getElementById('chat-messages');
+  if (sendButton) {
+    sendButton.disabled = safyChatRequestPending;
+    sendButton.setAttribute('aria-disabled', String(safyChatRequestPending));
+  }
+  inputWrapper?.classList.toggle('is-request-pending', safyChatRequestPending);
+  if (messages) messages.setAttribute('aria-busy', String(safyChatRequestPending));
+}
+
+function appendChatLoadingIndicator() {
+  const empty = document.getElementById('chat-empty-state');
+  const messages = document.getElementById('chat-messages');
+  if (empty) empty.style.display = 'none';
+  if (!messages) return null;
+
+  messages.style.display = 'block';
+  const message = document.createElement('div');
+  message.className = 'message assistant-message safy-loading-message';
+  message.setAttribute('role', 'status');
+  message.setAttribute('aria-label', 'Safy is processing the request');
+
+  const avatar = makeElement('div', 'message-avatar agent-avatar', 'S');
+  const content = makeElement('div', 'message-content');
+  const bubble = makeElement('div', 'message-bubble safy-loading-bubble');
+  const dots = makeElement('div', 'safy-loading-dots');
+  dots.setAttribute('aria-hidden', 'true');
+  for (let index = 0; index < 3; index += 1) dots.appendChild(makeElement('span', 'safy-loading-dot'));
+  bubble.appendChild(dots);
+  content.appendChild(bubble);
+  message.append(avatar, content);
+  messages.appendChild(message);
+  messages.scrollTop = messages.scrollHeight;
+  return message;
+}
+
+function removeChatLoadingIndicator(message) {
+  if (!message) return;
+  message.remove();
+  const messages = document.getElementById('chat-messages');
+  if (messages) messages.scrollTop = messages.scrollHeight;
 }
 
 function appendChatBubble(role, text, options = {}) {
@@ -1807,6 +1854,7 @@ async function getActiveDatabaseProfileForChat() {
 }
 
 async function sendChatMessage() {
+  if (safyChatRequestPending) return;
   hideNormalizedError();
   const input = document.getElementById('chat-input');
   const rawText = input?.value?.trim();
@@ -1899,6 +1947,8 @@ async function sendChatMessage() {
   input.value = '';
   hideSlashCommandMenu();
 
+  setChatRequestPending(true);
+  const loadingIndicator = appendChatLoadingIndicator();
   try {
     const activeModelProfile = await getActiveModelProfileForChat();
     const modelProfileId = activeModelProfile?.profile_id;
@@ -1968,6 +2018,9 @@ async function sendChatMessage() {
     await loadSessions();
   } catch (error) {
     appendChatBubble('assistant', normalizedError(error, 'Chat request failed.').message);
+  } finally {
+    removeChatLoadingIndicator(loadingIndicator);
+    setChatRequestPending(false);
   }
 }
 

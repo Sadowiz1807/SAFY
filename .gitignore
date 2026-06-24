@@ -13,12 +13,9 @@ Data/secrets/
 Data/TestFixtures/supabase/*.backup
 Data/TestFixtures/supabase/*.backup.gz
 Data/TestFixtures/supabase/*.dump
-current_state.md
 
-.env
 .env.local
 .env.*.local
-.env
 .env.*
 
 *.pem
@@ -35,8 +32,6 @@ logs/
 node_modules/
 .venv/
 venv/
-__pycache__/
-.pytest_cache/
 
 # SAFY local runtime profiles / secrets
 Data/safy_profiles.json
@@ -45,7 +40,6 @@ Data/Database_management/database_profiles.json
 Data/**/*.local.json
 
 # SAFY generated runtime secrets
-Data/secrets/
 Data/**/sandbox_secrets.json
 !.env.template
 !.env.local.example
@@ -67,3 +61,17 @@ Docker/.env
 !Docker/.env.example
 Data/User/user_profiles.json
 !Data/User/user_profiles.example.json
+
+# SAFY Domain Intelligence generated runtime/build files
+DomainIntelligence/work/
+DomainIntelligence/packs/cache/
+DomainIntelligence/**/__pycache__/
+DomainIntelligence/**/*.pyc
+Tests/**/__pycache__/
+Tests/**/*.pyc
+# Python packaging/build outputs
+build/
+dist/
+*.egg-info/
+# Clean handoff outputs
+*_clean_handoff.zip

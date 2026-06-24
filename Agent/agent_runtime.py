@@ -17,6 +17,7 @@ from Core.workflow_review import WorkflowReviewCoordinator
 from LLM.provider_health import adapter_for
 from .schema_context import summarize_schema
 from DataStore.schema_graph_store import summarize_schema_graph
+from DomainIntelligence.context_builder import DomainContextBuilder
 from Core.skill_actions import (
     CommandRouterSkill,
     DatabaseContextSkill,
@@ -73,6 +74,7 @@ class AgentRuntime:
         self.query_repair_skill = QueryRepairSkill()
         self.workflow_engine = WorkflowEngine()
         self.workflow_reviewer = WorkflowReviewCoordinator()
+        self.domain_context_builder = DomainContextBuilder(Path(__file__).resolve().parents[1])
         self._memory_states: dict[str, dict[str, Any]] = {}
         self.skill_registry = SkillRegistry()
         self.tool_registry = ToolRegistry()
@@ -133,6 +135,7 @@ class AgentRuntime:
             ("sandbox.validate", "sandbox", "Run write/DDL SQL in sandbox before real execution.", "WRITE_SQL", False, False, True, False),
             ("database.execute", "database", "Execute sandbox-validated write/DDL SQL on connected database.", "WRITE_SQL", False, True, True, True),
             ("schema.graph.read", "schema", "Read cached schema graph for context packing.", "READ_ONLY_SQL", True, False, False, False),
+            ("domain.context", "domain", "Route domain packs and retrieve bounded business context for prompt packing.", "META", True, False, False, False),
             ("execute_box.set_draft", "ui", "Place SQL in Execute Box for user review.", "META", True, False, False, False),
         ]
         for name, toolset, description, risk_class, read_only, writes_database, requires_sandbox, requires_confirmation in tool_specs:
@@ -176,7 +179,36 @@ class AgentRuntime:
     def _build_context_pack(self, *, session_id: str | None, message: str, state: AgentWorkflowState, target: str | None, sandbox_id: str | None, database_profile_id: str | None) -> ContextPack:
         resolved_ctx = self.database_context_skill.resolve(target, sandbox_id, database_profile_id)
         schema_text = self._schema_context_text(resolved_ctx.target, resolved_ctx.sandbox_id, resolved_ctx.database_profile_id)
+        domain_context_payload = None
+        try:
+            db_type = None
+            if resolved_ctx.database_profile:
+                db_type = resolved_ctx.database_profile.get("driver") or resolved_ctx.database_profile.get("dbms")
+            domain_context = self.domain_context_builder.build(
+                question=message,
+                schema_summary=schema_text,
+                database_profile_id=resolved_ctx.database_profile_id,
+                database_type=db_type,
+            )
+            domain_context_payload = domain_context.to_dict()
+            domain_context_payload["prompt_text"] = domain_context.to_prompt_text()
+        except Exception as exc:
+            domain_context_payload = {"warnings": [f"domain_context_error:{type(exc).__name__}"]}
         database_name = None
+        if isinstance(domain_context_payload, dict):
+            self._record_workflow_event(
+                session_id,
+                state,
+                "domain_context",
+                status="ok" if domain_context_payload.get("domain_id") else "none",
+                metadata={
+                    "domain_id": domain_context_payload.get("domain_id"),
+                    "domain_pack_version": domain_context_payload.get("domain_pack_version"),
+                    "router_confidence": domain_context_payload.get("router_confidence"),
+                    "retrieved_doc_ids": domain_context_payload.get("retrieved_doc_ids", []),
+                    "warnings": domain_context_payload.get("warnings", []),
+                },
+            )
         if resolved_ctx.database_profile:
             database_name = str(resolved_ctx.database_profile.get("database") or resolved_ctx.database_profile.get("display_name") or "") or None
         state.remember_context(
@@ -193,6 +225,7 @@ class AgentRuntime:
             database_profile_id=resolved_ctx.database_profile_id,
             database_profile=resolved_ctx.database_profile,
             schema_summary=schema_text,
+            domain_context=domain_context_payload,
             state=state,
             available_skills=self.skill_registry.active_names(),
         )

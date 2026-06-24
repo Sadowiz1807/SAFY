@@ -1,0 +1,16 @@
+# Preserve committed bytes to avoid cross-platform mass LF/CRLF churn.
+# Windows command scripts remain explicitly CRLF.
+* -text
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+*.zip binary
+*.gz binary
+*.dump binary
+*.backup binary
+*.sqlite binary
+*.sqlite3 binary
+*.db binary
+*.safy-domain binary

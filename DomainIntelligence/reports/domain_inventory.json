@@ -1,0 +1,215 @@
+{
+  "domains": [
+    {
+      "dialects": [
+        "mysql",
+        "oracle",
+        "postgresql",
+        "sqlite",
+        "sqlserver",
+        "supabase_rpc"
+      ],
+      "domain_id": "_domain_template",
+      "file_count": 63,
+      "has_canonical_cases": false,
+      "has_glossary": true,
+      "has_manifest": true,
+      "has_safety_cases": true,
+      "runtime": false,
+      "size_bytes": 14417
+    },
+    {
+      "dialects": [
+        "mysql",
+        "oracle",
+        "postgresql",
+        "sqlite",
+        "sqlserver",
+        "supabase_rpc"
+      ],
+      "domain_id": "banking_finance",
+      "file_count": 63,
+      "has_canonical_cases": true,
+      "has_glossary": true,
+      "has_manifest": true,
+      "has_safety_cases": true,
+      "runtime": true,
+      "size_bytes": 45946206
+    },
+    {
+      "dialects": [
+        "mysql",
+        "oracle",
+        "postgresql",
+        "sqlite",
+        "sqlserver",
+        "supabase_rpc"
+      ],
+      "domain_id": "crm_sales",
+      "file_count": 63,
+      "has_canonical_cases": true,
+      "has_glossary": true,
+      "has_manifest": true,
+      "has_safety_cases": true,
+      "runtime": true,
+      "size_bytes": 45397569
+    },
+    {
+      "dialects": [
+        "mysql",
+        "oracle",
+        "postgresql",
+        "sqlite",
+        "sqlserver",
+        "supabase_rpc"
+      ],
+      "domain_id": "ecommerce",
+      "file_count": 88,
+      "has_canonical_cases": true,
+      "has_glossary": true,
+      "has_manifest": true,
+      "has_safety_cases": true,
+      "runtime": true,
+      "size_bytes": 45774833
+    },
+    {
+      "dialects": [
+        "mysql",
+        "oracle",
+        "postgresql",
+        "sqlite",
+        "sqlserver",
+        "supabase_rpc"
+      ],
+      "domain_id": "education",
+      "file_count": 63,
+      "has_canonical_cases": true,
+      "has_glossary": true,
+      "has_manifest": true,
+      "has_safety_cases": true,
+      "runtime": true,
+      "size_bytes": 45451194
+    },
+    {
+      "dialects": [
+        "mysql",
+        "oracle",
+        "postgresql",
+        "sqlite",
+        "sqlserver",
+        "supabase_rpc"
+      ],
+      "domain_id": "healthcare",
+      "file_count": 63,
+      "has_canonical_cases": true,
+      "has_glossary": true,
+      "has_manifest": true,
+      "has_safety_cases": true,
+      "runtime": true,
+      "size_bytes": 46000311
+    },
+    {
+      "dialects": [
+        "mysql",
+        "oracle",
+        "postgresql",
+        "sqlite",
+        "sqlserver",
+        "supabase_rpc"
+      ],
+      "domain_id": "hotel_booking",
+      "file_count": 63,
+      "has_canonical_cases": true,
+      "has_glossary": true,
+      "has_manifest": true,
+      "has_safety_cases": true,
+      "runtime": true,
+      "size_bytes": 45398755
+    },
+    {
+      "dialects": [
+        "mysql",
+        "oracle",
+        "postgresql",
+        "sqlite",
+        "sqlserver",
+        "supabase_rpc"
+      ],
+      "domain_id": "human_resources",
+      "file_count": 63,
+      "has_canonical_cases": true,
+      "has_glossary": true,
+      "has_manifest": true,
+      "has_safety_cases": true,
+      "runtime": true,
+      "size_bytes": 47658250
+    },
+    {
+      "dialects": [
+        "mysql",
+        "oracle",
+        "postgresql",
+        "sqlite",
+        "sqlserver",
+        "supabase_rpc"
+      ],
+      "domain_id": "inventory_logistics",
+      "file_count": 63,
+      "has_canonical_cases": true,
+      "has_glossary": true,
+      "has_manifest": true,
+      "has_safety_cases": true,
+      "runtime": true,
+      "size_bytes": 47463155
+    },
+    {
+      "dialects": [
+        "mysql",
+        "oracle",
+        "postgresql",
+        "sqlite",
+        "sqlserver",
+        "supabase_rpc"
+      ],
+      "domain_id": "saas_analytics",
+      "file_count": 63,
+      "has_canonical_cases": true,
+      "has_glossary": true,
+      "has_manifest": true,
+      "has_safety_cases": true,
+      "runtime": true,
+      "size_bytes": 46636710
+    },
+    {
+      "dialects": [
+        "mysql",
+        "oracle",
+        "postgresql",
+        "sqlite",
+        "sqlserver",
+        "supabase_rpc"
+      ],
+      "domain_id": "social_content",
+      "file_count": 63,
+      "has_canonical_cases": true,
+      "has_glossary": true,
+      "has_manifest": true,
+      "has_safety_cases": true,
+      "runtime": true,
+      "size_bytes": 45563610
+    }
+  ],
+  "generated_at": "2026-06-24T13:03:26.981128+00:00",
+  "runtime_domains": [
+    "banking_finance",
+    "crm_sales",
+    "ecommerce",
+    "education",
+    "healthcare",
+    "hotel_booking",
+    "human_resources",
+    "inventory_logistics",
+    "saas_analytics",
+    "social_content"
+  ]
+}

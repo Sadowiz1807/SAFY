@@ -25,7 +25,7 @@
 
 - `Apps/Web/login.html` + `Apps/Web/login.js`: login page.
 - `Apps/Web/dashboard.html` + `Apps/Web/dashboard.js`: dashboard, chat, profile controls, context sources, Execute Box, and sidebar behavior.
-- `Apps/Web/schema-graph.html` + `Apps/Web/schema-graph.js`: dedicated Schema Graph implementation served at `/Dashboard/{schema_ui_name}`, replacing the Dashboard view while preserving browser Back navigation.
+- `Apps/Web/schema-graph.html` + `Apps/Web/schema-graph.js`: dedicated Schema Graph implementation served at `/Dashboard/{schema_ui_name}`, replacing the Dashboard view while preserving browser Back navigation; owns grid rendering, node dragging, relationship redraw, pan, and cursor-centered zoom.
 - `Apps/Web/styles.css`: shared UI styles.
 - `Apps/Web/index.html`: compatibility redirect to login.
 - `Apps/Web/safy-ui.js`: compatibility shim for stale cached dashboard HTML; the maintained implementation is `dashboard.js`.
@@ -34,9 +34,13 @@
 
 ### Agent and workflow
 
-- `Agent/agent_runtime.py`: unified agent workflow orchestration.
+- `Agent/agent_runtime.py`: unified agent workflow orchestration, including bounded compiled-domain context routing before SQL draft generation.
 - `Agent/schema_context.py`: schema context summarization.
 - `Core/`: workflow state, context packs, skill loading/registry/actions, planning, policy, and deterministic review.
+- `DomainIntelligence/`: compiled SAFY domain-pack contracts, compiler, registry, router, retriever, context builder, cache, security checks, CLI handlers, and canonical artifact subdirectories: `packs/`, `reports/`, and `work/`. Root-level `DomainBuild/` and `DomainPacks/` are not current runtime source locations.
+- `Skills/`: canonical skill directories and `SKILL.md` filenames are lowercase directory names plus uppercase `SKILL.md`; `Scripts/normalize_skill_git_case.ps1` is the one-time Windows Git-index migration helper.
+- Wheel resources are declared in `pyproject.toml`; bundled runtime assets include `Configs/`, `Apps/Web/`, `Skills/`, and `DomainIntelligence/packs/`.
+- `Scripts/package_clean_handoff.py` is the canonical secret-safe source handoff packager; do not archive the repository root manually.
 
 ### Database safety and execution
 

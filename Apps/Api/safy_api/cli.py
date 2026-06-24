@@ -73,6 +73,8 @@ def main() -> None:
     run_parser.add_argument("--no-browser", dest="browser", action="store_false", help="Do not open browser")
 
     subparsers.add_parser("info", help="Show SAFY info")
+    domain_parser = subparsers.add_parser("domain", help="Manage SAFY compiled domain packs")
+    domain_parser.add_argument("domain_args", nargs=argparse.REMAINDER)
     test_parser = subparsers.add_parser("test", help="Run SAFY tests")
     test_parser.add_argument("--stage", help="Run a specific stage test directory, for example stage9")
 
@@ -108,6 +110,9 @@ def main() -> None:
         print("SAFY Version: 1.1.0")
         print(f"Home: {root}")
         print("Dashboard: http://127.0.0.1:8000/")
+    elif args.command == "domain":
+        from DomainIntelligence.cli import main as domain_main
+        sys.exit(domain_main(args.domain_args, root=root))
     elif args.command == "test":
         import pytest
 
