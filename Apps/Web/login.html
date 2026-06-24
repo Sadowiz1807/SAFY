@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+  <title>SAFY Login</title>
+</head>
+<body class="login-page">
+<section class="login-screen login-screen-standalone" id="safy-login-screen" aria-label="SAFY login">
+    <div class="login-card">
+      <div class="login-brand">
+        <div class="login-logo">S</div>
+        <div>
+          <h1>SAFY Login</h1>
+          <p>Sign in before opening the database dashboard.</p>
+        </div>
+      </div>
+
+      <form class="login-form" id="safy-login-form" autocomplete="off">
+        <div class="form-field">
+          <label class="field-label" for="login-username">Username</label>
+          <input class="field-input" id="login-username" name="username" type="text" placeholder="Username" autocomplete="username" />
+        </div>
+        <div class="form-field">
+          <label class="field-label" for="login-password">Password</label>
+          <input class="field-input" id="login-password" name="password" type="password" placeholder="Password" autocomplete="current-password" />
+        </div>
+        <p class="login-error hidden" id="login-error" role="alert"></p>
+        <button class="btn-primary login-submit" id="login-submit-btn" type="submit">Login</button>
+      </form>
+
+    </div>
+  </section>
+<script src="/static/login.js" defer></script>
+</body>
+</html>

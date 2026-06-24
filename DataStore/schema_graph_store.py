@@ -11,6 +11,9 @@ import re
 import tempfile
 
 
+SCHEMA_GRAPH_VERSION = "2.0.0"
+
+
 class SchemaGraphStoreError(Exception):
     def __init__(self, code: str, message: str, details: dict[str, Any] | None = None):
         self.code = code
@@ -29,9 +32,6 @@ def _safe_profile_id(value: str) -> str:
         safe = "main_database"
     if safe == raw and len(safe) <= 80:
         return safe
-    # Sanitization alone is collision-prone (for example ``a/b`` and ``a_b``)
-    # and unbounded IDs can exceed filesystem filename limits. Preserve a short
-    # readable prefix plus a deterministic digest for transformed/long IDs.
     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
     prefix = safe[:64].rstrip("._-") or "profile"
     return f"{prefix}_{digest}"
@@ -62,128 +62,488 @@ def _read_json(path: Path, default: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+def _text(value: Any, default: str = "") -> str:
+    return str(value if value is not None else default).strip()
+
+
+def _bool(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "yes", "1", "y"}:
+            return True
+        if lowered in {"false", "no", "0", "n"}:
+            return False
+    if value is None:
+        return default
+    return bool(value)
+
+
+def _schema_name(value: Any) -> str:
+    return _text(value, "public") or "public"
+
+
+def _node_id(schema: Any, name: Any) -> str:
+    return f"{_schema_name(schema)}.{_text(name)}"
+
+
 def _column_name(column: dict[str, Any]) -> str:
-    return str(column.get("name") or column.get("column_name") or "").strip()
+    return _text(column.get("name") or column.get("column_name"))
 
 
 def _column_type(column: dict[str, Any]) -> str:
-    return str(column.get("data_type") or column.get("type") or column.get("db_type") or "").strip()
+    return _text(column.get("data_type") or column.get("type") or column.get("db_type") or "unknown")
 
 
-def _table_key(table: dict[str, Any]) -> str:
-    schema = str(table.get("schema") or table.get("table_schema") or "").strip()
-    name = str(table.get("name") or table.get("table_name") or "").strip()
-    return f"{schema}.{name}" if schema and schema not in {"main", "public"} else name
+def _node_type(value: Any) -> str:
+    raw = _text(value, "table").lower().replace(" ", "_")
+    aliases = {
+        "base_table": "table",
+        "foreign_table": "table",
+        "materialized_view": "materialized_view",
+        "partitioned_table": "partition",
+    }
+    return aliases.get(raw, raw if raw in {"table", "view", "materialized_view", "partition"} else "table")
 
 
-def _normalize_tables(raw_schema: dict[str, Any]) -> list[dict[str, Any]]:
+def _normalize_index(index: Any) -> dict[str, Any] | None:
+    if not isinstance(index, dict):
+        return None
+    name = _text(index.get("name") or index.get("index_name"))
+    columns = index.get("columns") or index.get("column_names") or []
+    if isinstance(columns, str):
+        columns = [columns]
+    columns = [_text(item) for item in columns if _text(item)]
+    if not name and not columns and not index.get("definition"):
+        return None
+    return {
+        "name": name or None,
+        "columns": columns,
+        "unique": _bool(index.get("unique")),
+        "definition": index.get("definition") or index.get("index_definition"),
+        "method": index.get("method"),
+    }
+
+
+def _normalize_unique_constraint(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, str):
+        return {"name": None, "columns": [value]}
+    if not isinstance(value, dict):
+        return None
+    columns = value.get("columns") or value.get("column_names") or []
+    if isinstance(columns, str):
+        columns = [columns]
+    columns = [_text(item) for item in columns if _text(item)]
+    if not columns:
+        return None
+    return {"name": _text(value.get("name") or value.get("constraint_name")) or None, "columns": columns}
+
+
+def _normalize_nodes(raw_schema: dict[str, Any]) -> list[dict[str, Any]]:
     metadata = raw_schema.get("metadata") if isinstance(raw_schema.get("metadata"), dict) else {}
-    raw_tables = raw_schema.get("tables") or metadata.get("tables") or []
-    tables: list[dict[str, Any]] = []
+    raw_tables = raw_schema.get("nodes") or raw_schema.get("tables") or metadata.get("tables") or []
+    nodes: list[dict[str, Any]] = []
     if not isinstance(raw_tables, list):
-        return tables
-    for table in raw_tables:
-        if not isinstance(table, dict):
+        return nodes
+
+    for raw_table in raw_tables:
+        if not isinstance(raw_table, dict):
             continue
-        name = str(table.get("name") or table.get("table_name") or "").strip()
+        name = _text(raw_table.get("name") or raw_table.get("table_name"))
         if not name:
             continue
-        schema = str(table.get("schema") or table.get("table_schema") or "public").strip() or "public"
+        schema = _schema_name(raw_table.get("schema") or raw_table.get("table_schema"))
+        node_id = _text(raw_table.get("id")) or _node_id(schema, name)
+        raw_columns = raw_table.get("columns") or []
         columns: list[dict[str, Any]] = []
-        for column in table.get("columns") or []:
-            if not isinstance(column, dict):
-                continue
-            col_name = _column_name(column)
-            if not col_name:
-                continue
-            columns.append({
-                "name": col_name,
-                "type": _column_type(column),
-                "nullable": bool(column.get("nullable", False)),
-                "primary_key": bool(column.get("primary_key", False)),
-                "sensitive": bool(column.get("sensitive", False)),
-            })
-        tables.append({
+        if isinstance(raw_columns, list):
+            for position, raw_column in enumerate(raw_columns, start=1):
+                if not isinstance(raw_column, dict):
+                    continue
+                column_name = _column_name(raw_column)
+                if not column_name:
+                    continue
+                columns.append({
+                    "id": _text(raw_column.get("id")) or f"{node_id}.{column_name}",
+                    "name": column_name,
+                    "ordinal_position": int(raw_column.get("ordinal_position") or position),
+                    "data_type": _column_type(raw_column),
+                    "nullable": _bool(raw_column.get("nullable"), True),
+                    "primary_key": _bool(raw_column.get("primary_key")),
+                    "foreign_key": _bool(raw_column.get("foreign_key")),
+                    "unique": _bool(raw_column.get("unique")),
+                    "default": raw_column.get("default") if "default" in raw_column else raw_column.get("column_default"),
+                    "generated": raw_column.get("generated") or raw_column.get("generation_expression"),
+                    "sensitive": _bool(raw_column.get("sensitive")),
+                })
+
+        raw_primary_keys = raw_table.get("primary_keys") or []
+        if isinstance(raw_primary_keys, str):
+            raw_primary_keys = [raw_primary_keys]
+        primary_columns = [_text(item) for item in raw_primary_keys if _text(item)]
+        if not primary_columns:
+            primary_columns = [column["name"] for column in columns if column["primary_key"]]
+        for column in columns:
+            if column["name"] in primary_columns:
+                column["primary_key"] = True
+
+        raw_unique_constraints = raw_table.get("unique_constraints") or []
+        unique_constraints = [item for item in (_normalize_unique_constraint(value) for value in raw_unique_constraints) if item]
+        unique_columns = {column for constraint in unique_constraints for column in constraint["columns"]}
+        for column in columns:
+            if column["name"] in unique_columns:
+                column["unique"] = True
+
+        indexes = [item for item in (_normalize_index(value) for value in (raw_table.get("indexes") or [])) if item]
+        nodes.append({
+            "id": node_id,
+            "node_type": _node_type(raw_table.get("node_type") or raw_table.get("type") or raw_table.get("table_type")),
             "schema": schema,
             "name": name,
-            "key": _table_key({"schema": schema, "name": name}),
-            "type": table.get("type") or table.get("table_type") or "table",
+            "display_name": f"{schema}.{name}",
             "columns": columns,
-            "primary_keys": table.get("primary_keys") or [c["name"] for c in columns if c.get("primary_key")],
-            "foreign_keys": table.get("foreign_keys") or [],
-            "indexes": table.get("indexes") or [],
-            "row_count_estimate": table.get("row_count_estimate"),
+            "primary_key": {
+                "name": _text(raw_table.get("primary_key_name")) or None,
+                "columns": primary_columns,
+            },
+            "unique_constraints": unique_constraints,
+            "indexes": indexes,
+            "row_count_estimate": raw_table.get("row_count_estimate"),
+            "metadata": raw_table.get("metadata") if isinstance(raw_table.get("metadata"), dict) else {},
+            # Kept only while constructing relationships. Removed from the final node.
+            "_raw_foreign_keys": raw_table.get("foreign_keys") or [],
+            "_raw_inherits": raw_table.get("inherits") or raw_table.get("inheritance") or [],
         })
-    return tables
+    nodes.sort(key=lambda item: (item["schema"], item["name"]))
+    return nodes
 
 
-def _edge_from_fk(table: dict[str, Any], fk: dict[str, Any]) -> dict[str, Any] | None:
-    from_table = table.get("key") or table.get("name")
-    from_column = fk.get("column") or fk.get("from_column") or fk.get("from")
-    to_table = fk.get("references_table") or fk.get("to_table") or fk.get("table")
-    to_column = fk.get("references_column") or fk.get("to_column") or fk.get("to")
-    if not from_table or not from_column or not to_table:
+def _qualify_node_id(value: Any, default_schema: str, known_ids: set[str]) -> str:
+    raw = _text(value)
+    if not raw:
+        return ""
+    if raw in known_ids:
+        return raw
+    if "." in raw:
+        return raw
+    candidate = _node_id(default_schema, raw)
+    if candidate in known_ids:
+        return candidate
+    public_candidate = _node_id("public", raw)
+    if public_candidate in known_ids:
+        return public_candidate
+    main_candidate = _node_id("main", raw)
+    if main_candidate in known_ids:
+        return main_candidate
+    matches = [node_id for node_id in known_ids if node_id.rsplit(".", 1)[-1] == raw]
+    return matches[0] if len(matches) == 1 else candidate
+
+
+def _string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if isinstance(value, list):
+        return [_text(item) for item in value if _text(item)]
+    return []
+
+
+def _relationship_id(payload: dict[str, Any]) -> str:
+    constraint = _text(payload.get("constraint_name"))
+    if constraint:
+        return constraint
+    core = json.dumps({
+        "type": payload.get("relationship_type"),
+        "source": payload.get("source"),
+        "target": payload.get("target"),
+    }, sort_keys=True, ensure_ascii=False)
+    return f"rel_{hashlib.sha256(core.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _relationship_from_fk(node: dict[str, Any], fk: dict[str, Any], known_ids: set[str]) -> dict[str, Any] | None:
+    source_columns = _string_list(fk.get("columns") or fk.get("from_columns") or fk.get("column") or fk.get("from_column") or fk.get("from"))
+    target_columns = _string_list(fk.get("references_columns") or fk.get("to_columns") or fk.get("references_column") or fk.get("to_column") or fk.get("to"))
+    target_table = fk.get("references_table") or fk.get("to_table") or fk.get("table") or fk.get("target_table")
+    target_schema = _schema_name(fk.get("references_schema") or fk.get("to_schema") or node.get("schema"))
+    target_id = _qualify_node_id(target_table, target_schema, known_ids)
+    if not source_columns or not target_id:
         return None
-    to_column = to_column or "id"
+    if not target_columns:
+        target_columns = ["id"]
+    nullable_lookup = {column["name"]: column["nullable"] for column in node.get("columns") or []}
+    payload = {
+        "relationship_type": "foreign_key",
+        "source": {"node_id": node["id"], "columns": source_columns},
+        "target": {"node_id": target_id, "columns": target_columns},
+        "constraint_name": _text(fk.get("constraint_name") or fk.get("name")) or None,
+        "cardinality": _text(fk.get("cardinality"), "many_to_one") or "many_to_one",
+        "on_update": _text(fk.get("on_update"), "NO ACTION") or "NO ACTION",
+        "on_delete": _text(fk.get("on_delete"), "NO ACTION") or "NO ACTION",
+        "nullable": any(nullable_lookup.get(column, True) for column in source_columns),
+        "evidence": "database_constraint",
+        "confidence": 1.0,
+        "metadata": fk.get("metadata") if isinstance(fk.get("metadata"), dict) else {},
+    }
+    payload["id"] = _text(fk.get("id")) or _relationship_id(payload)
+    return payload
+
+
+def _normalize_relationship(raw: dict[str, Any], known_ids: set[str], default_schema: str = "public") -> dict[str, Any] | None:
+    relation_type = _text(raw.get("relationship_type") or raw.get("type"), "foreign_key").lower()
+    aliases = {"fk": "foreign_key", "inherits": "inheritance", "partition": "partition_parent"}
+    relation_type = aliases.get(relation_type, relation_type)
+    allowed = {"foreign_key", "inheritance", "view_dependency", "materialized_view_dependency", "partition_parent", "association", "inferred"}
+    if relation_type not in allowed:
+        return None
+
+    source = raw.get("source") if isinstance(raw.get("source"), dict) else {}
+    target = raw.get("target") if isinstance(raw.get("target"), dict) else {}
+    source_node = source.get("node_id") or raw.get("source_node_id") or raw.get("from_table") or raw.get("child_table")
+    target_node = target.get("node_id") or raw.get("target_node_id") or raw.get("to_table") or raw.get("parent_table")
+    source_schema = _schema_name(raw.get("source_schema") or raw.get("from_schema") or default_schema)
+    target_schema = _schema_name(raw.get("target_schema") or raw.get("to_schema") or default_schema)
+    source_id = _qualify_node_id(source_node, source_schema, known_ids)
+    target_id = _qualify_node_id(target_node, target_schema, known_ids)
+    if not source_id or not target_id:
+        return None
+
+    source_columns = _string_list(source.get("columns") or raw.get("source_columns") or raw.get("from_columns") or raw.get("from_column"))
+    target_columns = _string_list(target.get("columns") or raw.get("target_columns") or raw.get("to_columns") or raw.get("to_column"))
+    payload = {
+        "relationship_type": relation_type,
+        "source": {"node_id": source_id, "columns": source_columns},
+        "target": {"node_id": target_id, "columns": target_columns},
+        "constraint_name": _text(raw.get("constraint_name") or raw.get("name")) or None,
+        "cardinality": raw.get("cardinality") or ("many_to_one" if relation_type == "foreign_key" else None),
+        "on_update": raw.get("on_update"),
+        "on_delete": raw.get("on_delete"),
+        "nullable": raw.get("nullable"),
+        "evidence": _text(raw.get("evidence"), "database_metadata") or "database_metadata",
+        "confidence": float(raw.get("confidence", 1.0 if relation_type != "inferred" else 0.5)),
+        "metadata": raw.get("metadata") if isinstance(raw.get("metadata"), dict) else {},
+    }
+    payload["id"] = _text(raw.get("id")) or _relationship_id(payload)
+    return payload
+
+
+def _normalize_relationships(raw_schema: dict[str, Any], nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    known_ids = {node["id"] for node in nodes}
+    relationships: list[dict[str, Any]] = []
+
+    for node in nodes:
+        raw_foreign_keys = node.get("_raw_foreign_keys") or []
+        if isinstance(raw_foreign_keys, list):
+            for raw_fk in raw_foreign_keys:
+                if isinstance(raw_fk, dict):
+                    relationship = _relationship_from_fk(node, raw_fk, known_ids)
+                    if relationship:
+                        relationships.append(relationship)
+        raw_inherits = node.get("_raw_inherits") or []
+        if not isinstance(raw_inherits, list):
+            raw_inherits = [raw_inherits]
+        for parent in raw_inherits:
+            if isinstance(parent, dict):
+                raw_relation = {"relationship_type": "inheritance", "source_node_id": node["id"], **parent}
+            else:
+                raw_relation = {"relationship_type": "inheritance", "source_node_id": node["id"], "target_node_id": parent}
+            relationship = _normalize_relationship(raw_relation, known_ids, node["schema"])
+            if relationship:
+                relationships.append(relationship)
+
+    metadata = raw_schema.get("metadata") if isinstance(raw_schema.get("metadata"), dict) else {}
+    raw_relationships = raw_schema.get("relationships") or raw_schema.get("edges") or metadata.get("relationships") or []
+    if isinstance(raw_relationships, list):
+        for raw_relationship in raw_relationships:
+            if not isinstance(raw_relationship, dict):
+                continue
+            relationship = _normalize_relationship(raw_relationship, known_ids)
+            if relationship:
+                relationships.append(relationship)
+
+    deduped: list[dict[str, Any]] = []
+    seen: set[tuple[Any, ...]] = set()
+    for relationship in relationships:
+        signature = (
+            relationship["relationship_type"],
+            relationship["source"]["node_id"],
+            tuple(relationship["source"]["columns"]),
+            relationship["target"]["node_id"],
+            tuple(relationship["target"]["columns"]),
+            relationship.get("constraint_name"),
+        )
+        if signature in seen:
+            continue
+        seen.add(signature)
+        deduped.append(relationship)
+
+    foreign_key_columns = {
+        (relationship["source"]["node_id"], column)
+        for relationship in deduped
+        if relationship["relationship_type"] == "foreign_key"
+        for column in relationship["source"]["columns"]
+    }
+    for node in nodes:
+        for column in node.get("columns") or []:
+            column["foreign_key"] = (node["id"], column["name"]) in foreign_key_columns
+        node.pop("_raw_foreign_keys", None)
+        node.pop("_raw_inherits", None)
+
+    deduped.sort(key=lambda item: (item["relationship_type"], item["source"]["node_id"], item["target"]["node_id"], item["id"]))
+    return deduped
+
+
+def _legacy_table(node: dict[str, Any], relationships: list[dict[str, Any]]) -> dict[str, Any]:
+    foreign_keys = []
+    for relationship in relationships:
+        if relationship["relationship_type"] != "foreign_key" or relationship["source"]["node_id"] != node["id"]:
+            continue
+        foreign_keys.append({
+            "constraint_name": relationship.get("constraint_name"),
+            "columns": relationship["source"]["columns"],
+            "references_schema": relationship["target"]["node_id"].split(".", 1)[0],
+            "references_table": relationship["target"]["node_id"].split(".", 1)[-1],
+            "references_columns": relationship["target"]["columns"],
+            "on_update": relationship.get("on_update"),
+            "on_delete": relationship.get("on_delete"),
+        })
     return {
-        "from_table": str(from_table),
-        "from_column": str(from_column),
-        "to_table": str(to_table),
-        "to_column": str(to_column),
-        "type": "foreign_key",
-        "join_condition": f"{from_table}.{from_column} = {to_table}.{to_column}",
+        "schema": node["schema"],
+        "name": node["name"],
+        "key": node["id"],
+        "type": node["node_type"],
+        "columns": [
+            {
+                "name": column["name"],
+                "type": column["data_type"],
+                "nullable": column["nullable"],
+                "primary_key": column["primary_key"],
+                "foreign_key": column["foreign_key"],
+                "sensitive": column["sensitive"],
+            }
+            for column in node["columns"]
+        ],
+        "primary_keys": node["primary_key"]["columns"],
+        "foreign_keys": foreign_keys,
+        "indexes": node["indexes"],
+        "row_count_estimate": node.get("row_count_estimate"),
+    }
+
+
+def _legacy_edge(relationship: dict[str, Any]) -> dict[str, Any]:
+    source_columns = relationship["source"]["columns"]
+    target_columns = relationship["target"]["columns"]
+    from_column = source_columns[0] if source_columns else ""
+    to_column = target_columns[0] if target_columns else ""
+    from_table = relationship["source"]["node_id"]
+    to_table = relationship["target"]["node_id"]
+    join_condition = None
+    if from_column and to_column:
+        join_condition = f"{from_table}.{from_column} = {to_table}.{to_column}"
+    return {
+        **relationship,
+        "type": relationship["relationship_type"],
+        "from_table": from_table,
+        "from_column": from_column,
+        "to_table": to_table,
+        "to_column": to_column,
+        "join_condition": join_condition,
+    }
+
+
+def _statistics(nodes: list[dict[str, Any]], relationships: list[dict[str, Any]]) -> dict[str, int]:
+    connected_ids = {
+        endpoint["node_id"]
+        for relationship in relationships
+        for endpoint in (relationship["source"], relationship["target"])
+    }
+    return {
+        "node_count": len(nodes),
+        "table_count": sum(1 for node in nodes if node["node_type"] in {"table", "partition"}),
+        "view_count": sum(1 for node in nodes if node["node_type"] == "view"),
+        "materialized_view_count": sum(1 for node in nodes if node["node_type"] == "materialized_view"),
+        "column_count": sum(len(node["columns"]) for node in nodes),
+        "relationship_count": len(relationships),
+        "foreign_key_count": sum(1 for relationship in relationships if relationship["relationship_type"] == "foreign_key"),
+        "inheritance_count": sum(1 for relationship in relationships if relationship["relationship_type"] == "inheritance"),
+        "partition_relationship_count": sum(1 for relationship in relationships if relationship["relationship_type"] == "partition_parent"),
+        "isolated_node_count": sum(1 for node in nodes if node["id"] not in connected_ids),
     }
 
 
 def build_schema_graph(raw_schema: dict[str, Any], database_profile: dict[str, Any]) -> dict[str, Any]:
-    tables = _normalize_tables(raw_schema or {})
-    edges: list[dict[str, Any]] = []
-    for table in tables:
-        for fk in table.get("foreign_keys") or []:
-            if isinstance(fk, dict):
-                edge = _edge_from_fk(table, fk)
-                if edge:
-                    edges.append(edge)
-    deduped_edges: list[dict[str, Any]] = []
-    seen: set[tuple[str, str, str, str]] = set()
-    for edge in edges:
-        key = (edge["from_table"], edge["from_column"], edge["to_table"], edge["to_column"])
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped_edges.append(edge)
-    profile_id = str(database_profile.get("profile_id") or "main_database")
-    display_name = str(database_profile.get("display_name") or profile_id)
-    graph_core = {
+    raw_schema = raw_schema or {}
+    nodes = _normalize_nodes(raw_schema)
+    relationships = _normalize_relationships(raw_schema, nodes)
+    profile_id = _text(database_profile.get("profile_id") or raw_schema.get("database_profile_id"), "main_database")
+    display_name = _text(database_profile.get("display_name") or raw_schema.get("database_name"), profile_id)
+    driver = database_profile.get("driver") or database_profile.get("dbms") or raw_schema.get("driver")
+    provider = database_profile.get("provider") or raw_schema.get("provider")
+    refreshed_at = _now_iso()
+    status = "ready" if nodes else "empty"
+    warnings = [str(item) for item in (raw_schema.get("warnings") or []) if str(item).strip()]
+    stats = _statistics(nodes, relationships)
+
+    canonical_core = {
         "database_profile_id": profile_id,
         "database_name": display_name,
-        "driver": database_profile.get("driver") or database_profile.get("dbms"),
-        "provider": database_profile.get("provider"),
-        "tables": tables,
-        "edges": deduped_edges,
+        "driver": driver,
+        "provider": provider,
+        "nodes": nodes,
+        "relationships": relationships,
     }
-    schema_hash = hashlib.sha256(json.dumps(graph_core, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+    schema_hash = hashlib.sha256(json.dumps(canonical_core, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+    graph_id = f"schema_{hashlib.sha256(profile_id.encode('utf-8')).hexdigest()[:12]}"
+    tables = [_legacy_table(node, relationships) for node in nodes]
+    edges = [_legacy_edge(relationship) for relationship in relationships]
+
     return {
-        "schema_version": 1,
-        **graph_core,
+        "schema_version": SCHEMA_GRAPH_VERSION,
+        **canonical_core,
+        "graph": {
+            "id": graph_id,
+            "name": display_name,
+            "database_engine": driver,
+            "generated_at": refreshed_at,
+            "status": status,
+        },
+        "statistics": stats,
+        "warnings": warnings,
         "schema_hash": schema_hash,
-        "refreshed_at": _now_iso(),
-        "status": "ready" if tables else "empty",
+        "refreshed_at": refreshed_at,
+        "status": status,
         "source": "backend_introspection",
-        "table_count": len(tables),
-        "edge_count": len(deduped_edges),
+        # Backward-compatible projections used by existing agent and API code.
+        "tables": tables,
+        "edges": edges,
+        "table_count": stats["table_count"],
+        "edge_count": stats["relationship_count"],
     }
 
 
 def empty_schema_graph(database_profile: dict[str, Any] | None = None) -> dict[str, Any]:
     profile = database_profile or {}
-    profile_id = str(profile.get("profile_id") or "")
+    profile_id = _text(profile.get("profile_id"))
+    display_name = profile.get("display_name") or profile_id or None
+    driver = profile.get("driver") or profile.get("dbms")
     return {
-        "schema_version": 1,
+        "schema_version": SCHEMA_GRAPH_VERSION,
         "database_profile_id": profile_id or None,
-        "database_name": profile.get("display_name") or profile_id or None,
-        "driver": profile.get("driver") or profile.get("dbms"),
+        "database_name": display_name,
+        "driver": driver,
         "provider": profile.get("provider"),
+        "graph": {
+            "id": f"schema_{hashlib.sha256((profile_id or 'empty').encode('utf-8')).hexdigest()[:12]}",
+            "name": display_name,
+            "database_engine": driver,
+            "generated_at": None,
+            "status": "empty",
+        },
+        "nodes": [],
+        "relationships": [],
+        "statistics": _statistics([], []),
+        "warnings": [],
         "tables": [],
         "edges": [],
         "schema_hash": None,
@@ -198,28 +558,37 @@ def empty_schema_graph(database_profile: dict[str, Any] | None = None) -> dict[s
 def summarize_schema_graph(graph: dict[str, Any] | None, max_tables: int = 20, max_columns: int = 16) -> str:
     if not graph or graph.get("status") != "ready":
         return "No stored schema graph for the active database. Generate SQL from the user's request only, and prefer conservative SELECT queries."
+    nodes = graph.get("nodes") or graph.get("tables") or []
+    relationships = graph.get("relationships") or graph.get("edges") or []
     lines = [
         f"Active database: {graph.get('database_name') or graph.get('database_profile_id')}",
         f"Schema hash: {graph.get('schema_hash') or 'unknown'}",
-        "Tables:",
+        "Tables and views:",
     ]
-    for table in (graph.get("tables") or [])[:max_tables]:
-        columns = table.get("columns") or []
-        rendered_cols = []
-        for col in columns[:max_columns]:
+    for node in nodes[:max_tables]:
+        columns = node.get("columns") or []
+        rendered_columns = []
+        for column in columns[:max_columns]:
             flags = []
-            if col.get("primary_key"):
+            if column.get("primary_key"):
                 flags.append("PK")
-            if col.get("sensitive"):
+            if column.get("foreign_key"):
+                flags.append("FK")
+            if column.get("sensitive"):
                 flags.append("sensitive")
             suffix = f" [{' '.join(flags)}]" if flags else ""
-            rendered_cols.append(f"{col.get('name')} {col.get('type') or ''}{suffix}".strip())
-        lines.append(f"- {table.get('key') or table.get('name')}: " + ", ".join(rendered_cols))
-    edges = graph.get("edges") or []
-    if edges:
+            column_type = column.get("data_type") or column.get("type") or ""
+            rendered_columns.append(f"{column.get('name')} {column_type}{suffix}".strip())
+        lines.append(f"- {node.get('id') or node.get('key') or node.get('name')}: " + ", ".join(rendered_columns))
+    if relationships:
         lines.append("Relationships:")
-        for edge in edges[:40]:
-            lines.append(f"- {edge.get('join_condition')}")
+        for relationship in relationships[:40]:
+            source = relationship.get("source") or {}
+            target = relationship.get("target") or {}
+            source_columns = ",".join(source.get("columns") or [])
+            target_columns = ",".join(target.get("columns") or [])
+            relation_type = relationship.get("relationship_type") or relationship.get("type") or "relationship"
+            lines.append(f"- {relation_type}: {source.get('node_id') or relationship.get('from_table')}({source_columns}) -> {target.get('node_id') or relationship.get('to_table')}({target_columns})")
     return "\n".join(lines)
 
 
@@ -259,10 +628,21 @@ class SchemaGraphStore:
         path = self._schema_path(profile_id)
         if not path.exists():
             return empty_schema_graph(database_profile or {"profile_id": profile_id})
-        return _read_json(path, empty_schema_graph(database_profile))
+        stored = _read_json(path, empty_schema_graph(database_profile))
+        if stored.get("schema_version") == SCHEMA_GRAPH_VERSION and isinstance(stored.get("nodes"), list):
+            return stored
+        # Version 1 stored graphs are upgraded in memory. The next refresh saves
+        # the canonical v2 contract without mutating historical data on read.
+        profile = {
+            "profile_id": profile_id or stored.get("database_profile_id"),
+            "display_name": (database_profile or {}).get("display_name") or stored.get("database_name"),
+            "driver": (database_profile or {}).get("driver") or stored.get("driver"),
+            "provider": (database_profile or {}).get("provider") or stored.get("provider"),
+        }
+        return build_schema_graph(stored, profile)
 
     def save(self, graph: dict[str, Any]) -> dict[str, Any]:
-        profile_id = str(graph.get("database_profile_id") or "").strip()
+        profile_id = _text(graph.get("database_profile_id"))
         if not profile_id:
             raise SchemaGraphStoreError("SCHEMA_PROFILE_ID_REQUIRED", "database_profile_id is required to save a schema graph.")
         path = self._schema_path(profile_id)
@@ -277,6 +657,7 @@ class SchemaGraphStore:
             "status": graph.get("status") or "empty",
             "table_count": graph.get("table_count", len(graph.get("tables") or [])),
             "edge_count": graph.get("edge_count", len(graph.get("edges") or [])),
+            "schema_version": graph.get("schema_version"),
         }
         self._write_index(index)
         return graph

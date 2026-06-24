@@ -22,6 +22,33 @@ _SIMPLE_SELECT_RE = re.compile(
     r"(?:\s+limit\s+(?P<limit>\d+))?\s*;?\s*$",
     re.I,
 )
+_OPENAPI_PK_TAG_RE = re.compile(r"<pk\s*/?>", re.I)
+_OPENAPI_UNIQUE_TAG_RE = re.compile(r"<unique\s*/?>", re.I)
+_OPENAPI_FK_TAG_RE = re.compile(r"<fk\b(?P<attrs>[^>]*)/?>", re.I)
+_OPENAPI_FK_ATTR_RE = re.compile(r"(?P<name>table|column|schema)\s*=\s*['\"](?P<value>[^'\"]+)['\"]", re.I)
+_OPENAPI_FK_TEXT_RE = re.compile(r"foreign\s+key\s+to\s+[`'\"]?(?:(?P<schema>[A-Za-z_][\w$]*)\.)?(?P<table>[A-Za-z_][\w$]*)\.(?P<column>[A-Za-z_][\w$]*)", re.I)
+
+
+def _openapi_column_relationship(description: Any) -> dict[str, str] | None:
+    text = str(description or "")
+    tag_match = _OPENAPI_FK_TAG_RE.search(text)
+    if tag_match:
+        attrs = {match.group("name").lower(): match.group("value") for match in _OPENAPI_FK_ATTR_RE.finditer(tag_match.group("attrs"))}
+        if attrs.get("table"):
+            return {
+                "schema": attrs.get("schema") or "public",
+                "table": attrs["table"],
+                "column": attrs.get("column") or "id",
+            }
+    text_match = _OPENAPI_FK_TEXT_RE.search(text)
+    if text_match:
+        return {
+            "schema": text_match.group("schema") or "public",
+            "table": text_match.group("table"),
+            "column": text_match.group("column"),
+        }
+    return None
+
 
 
 def _clean_rpc_name(value: Any) -> str:
@@ -232,10 +259,24 @@ class SupabaseRpcDriver:
         self._secret(profile, secret_context)
         base = self._base_url(profile)
         try:
-            spec, status = self._request_json(profile, base + "/", accept="application/openapi+json, application/json", operation="schema_introspection")
+            spec, status = self._request_json(
+                profile,
+                base + "/",
+                accept="application/openapi+json, application/json",
+                operation="schema_introspection",
+            )
         except DriverError:
-            return success_envelope(self.driver, profile, {"database": base, "schemas": ["public"], "tables": [], "sample_rows_included": False}, warnings=["Supabase OpenAPI schema is unavailable."])
+            return success_envelope(
+                self.driver,
+                profile,
+                {"database": base, "schemas": ["public"], "sample_rows_included": False},
+                warnings=["Supabase OpenAPI schema is unavailable."],
+                tables=[],
+                relationships=[],
+            )
+
         tables: list[dict[str, Any]] = []
+        relationships: list[dict[str, Any]] = []
         definitions = spec.get("definitions") if isinstance(spec, dict) else None
         if isinstance(definitions, dict):
             for table_name, definition in sorted(definitions.items()):
@@ -243,19 +284,106 @@ class SupabaseRpcDriver:
                     continue
                 props = definition.get("properties") or {}
                 required = set(definition.get("required") or [])
-                columns = []
-                for col_name, meta in sorted(props.items()):
-                    meta = meta if isinstance(meta, dict) else {}
-                    columns.append({
-                        "name": col_name,
-                        "data_type": meta.get("format") or meta.get("type") or "unknown",
-                        "nullable": col_name not in required,
-                        "primary_key": col_name == "id",
-                        "sensitive": is_sensitive_name(col_name),
-                    })
-                tables.append({"schema": "public", "name": table_name, "type": "table", "columns": columns, "primary_keys": ["id"] if any(c["name"] == "id" for c in columns) else [], "foreign_keys": [], "indexes": [], "row_count_estimate": None})
-        return success_envelope(self.driver, profile, {"database": base, "schemas": ["public"], "tables": tables, "sample_rows_included": False, "status_code": status})
+                columns: list[dict[str, Any]] = []
+                foreign_keys: list[dict[str, Any]] = []
+                unique_constraints: list[dict[str, Any]] = []
+                primary_keys: list[str] = []
 
+                for ordinal_position, (column_name, raw_meta) in enumerate(sorted(props.items()), start=1):
+                    meta = raw_meta if isinstance(raw_meta, dict) else {}
+                    description = str(meta.get("description") or "")
+                    is_primary = bool(_OPENAPI_PK_TAG_RE.search(description)) or bool(meta.get("x-primary-key"))
+                    is_unique = bool(_OPENAPI_UNIQUE_TAG_RE.search(description)) or bool(meta.get("x-unique"))
+                    if is_primary:
+                        primary_keys.append(column_name)
+                    if is_unique:
+                        unique_constraints.append({"name": None, "columns": [column_name]})
+
+                    relationship = _openapi_column_relationship(description)
+                    if not relationship and isinstance(meta.get("x-foreign-key"), dict):
+                        raw_fk = meta["x-foreign-key"]
+                        relationship = {
+                            "schema": str(raw_fk.get("schema") or "public"),
+                            "table": str(raw_fk.get("table") or ""),
+                            "column": str(raw_fk.get("column") or "id"),
+                        }
+                    if relationship and relationship.get("table"):
+                        constraint_name = f"fk_{table_name}_{column_name}_{relationship['table']}_{relationship['column']}"
+                        foreign_keys.append({
+                            "constraint_name": constraint_name,
+                            "columns": [column_name],
+                            "references_schema": relationship.get("schema") or "public",
+                            "references_table": relationship["table"],
+                            "references_columns": [relationship.get("column") or "id"],
+                            "on_update": "NO ACTION",
+                            "on_delete": "NO ACTION",
+                            "cardinality": "many_to_one",
+                            "metadata": {"source": "postgrest_openapi"},
+                        })
+                        relationships.append({
+                            "id": constraint_name,
+                            "relationship_type": "foreign_key",
+                            "source_node_id": f"public.{table_name}",
+                            "source_columns": [column_name],
+                            "target_node_id": f"{relationship.get('schema') or 'public'}.{relationship['table']}",
+                            "target_columns": [relationship.get("column") or "id"],
+                            "constraint_name": constraint_name,
+                            "cardinality": "many_to_one",
+                            "on_update": "NO ACTION",
+                            "on_delete": "NO ACTION",
+                            "nullable": column_name not in required,
+                            "evidence": "postgrest_openapi",
+                            "confidence": 1.0,
+                        })
+
+                    columns.append({
+                        "name": column_name,
+                        "data_type": meta.get("format") or meta.get("type") or "unknown",
+                        "nullable": column_name not in required,
+                        "primary_key": is_primary,
+                        "unique": is_unique,
+                        "default": meta.get("default"),
+                        "ordinal_position": ordinal_position,
+                        "sensitive": is_sensitive_name(column_name),
+                    })
+
+                # Older PostgREST specs do not tag primary keys. Keep the prior
+                # `id` fallback, but only after checking explicit metadata.
+                if not primary_keys and any(column["name"] == "id" for column in columns):
+                    primary_keys = ["id"]
+                    for column in columns:
+                        if column["name"] == "id":
+                            column["primary_key"] = True
+
+                tables.append({
+                    "schema": "public",
+                    "name": table_name,
+                    "type": "table",
+                    "columns": columns,
+                    "primary_keys": primary_keys,
+                    "unique_constraints": unique_constraints,
+                    "foreign_keys": foreign_keys,
+                    "indexes": [],
+                    "row_count_estimate": None,
+                })
+
+        warnings: list[str] = []
+        if tables and not relationships:
+            warnings.append("PostgREST OpenAPI exposed table columns but no explicit foreign-key metadata; SAFY did not infer relationships from matching column names.")
+        return success_envelope(
+            self.driver,
+            profile,
+            {
+                "database": base,
+                "schemas": ["public"],
+                "sample_rows_included": False,
+                "status_code": status,
+                "relationship_metadata": "postgrest_openapi",
+            },
+            warnings=warnings,
+            tables=tables,
+            relationships=relationships,
+        )
     def execute_readonly(self, sql: str, profile: dict[str, Any], secret_context: SecretContext | None = None, options: dict[str, Any] | None = None) -> dict[str, Any]:
         match = _SIMPLE_SELECT_RE.match(sql or "")
         if not match:

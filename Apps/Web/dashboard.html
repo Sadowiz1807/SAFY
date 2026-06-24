@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+  <title>SAFY Dashboard</title>
+</head>
+<body class="dashboard-page">
+<div class="app-shell" id="app-shell">
+
+  <!-- ═══════════════════════ TOP BAR ═══════════════════════ -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="sidebar-toggle-btn" id="toggle-left-sidebar-btn" type="button" aria-label="Toggle left sidebar" title="Toggle left sidebar">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M5.5 3L2.5 8L5.5 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M3 8H13.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <div class="safy-logo">
+        <span class="logo-icon">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+            <path d="M11 2L19.66 7V15L11 20L2.34 15V7L11 2Z" stroke="#38BDF8" stroke-width="1.5" stroke-linejoin="round"/>
+            <path d="M11 6L16.2 9V15L11 18L5.8 15V9L11 6Z" fill="#38BDF8" fill-opacity="0.15" stroke="#38BDF8" stroke-width="1" stroke-linejoin="round"/>
+            <circle cx="11" cy="12" r="2" fill="#38BDF8"/>
+          </svg>
+        </span>
+        <span class="logo-text">Safy</span>
+        <span class="logo-tag">AI Database Agent</span>
+      </div>
+    </div>
+
+    <div class="topbar-center">
+      <div class="topbar-profile model-profile">
+        <span class="profile-dot"></span>
+        <span class="profile-label">Model</span>
+        <span class="profile-value" id="topbar-model-value">Loading...</span>
+      </div>
+      <div class="topbar-divider"></div>
+      <div class="topbar-profile db-profile">
+        <span class="profile-dot db-dot"></span>
+        <span class="profile-label">Database</span>
+        <span class="profile-value" id="topbar-database-value">Loading...</span>
+      </div>
+      <div class="topbar-divider"></div>
+      <div class="topbar-profile mode-profile">
+        <span class="profile-dot mode-dot"></span>
+        <span class="profile-label">Mode</span>
+        <span class="profile-value" id="topbar-mode-value">Loading...</span>
+      </div>
+    </div>
+
+    <div class="topbar-right">
+      <button class="sidebar-toggle-btn" id="toggle-right-sidebar-btn" type="button" aria-label="Toggle right sidebar" title="Toggle right sidebar">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M10.5 3L13.5 8L10.5 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M13 8H2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <div class="current-user-badge" id="current-user-badge" title="Current SAFY user">
+        <span class="current-user-dot"></span>
+        <span id="current-user-label">Not signed in</span>
+        <button class="sign-out-btn" id="sign-out-btn" type="button">Sign out</button>
+      </div>
+      <div class="status-badge connected">
+        <span class="status-pulse"></span>
+        <span id="runtime-status-label">Backend Runtime</span>
+      </div>
+      <div class="security-badge">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M7 1L12 3.5V7.5C12 10.5 7 13 7 13C7 13 2 10.5 2 7.5V3.5L7 1Z" stroke="#22C55E" stroke-width="1.2" stroke-linejoin="round"/>
+          <path d="M5 7L6.5 8.5L9.5 5.5" stroke="#22C55E" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Read-only Guard Active</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ═══════════════════════ BODY ═══════════════════════ -->
+  <div class="app-body">
+
+    <!-- ════════════ LEFT SIDEBAR ════════════ -->
+    <aside class="left-sidebar">
+
+      <!-- New Chat -->
+      <div class="sidebar-section">
+        <button class="new-chat-btn btn-primary" id="new-chat-btn">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          New Chat
+        </button>
+      </div>
+
+      <!-- Session History -->
+      <div class="sidebar-section session-section">
+        <div class="section-label">Sessions</div>
+        <div class="session-list" id="session-list">
+          <div class="session-item empty-state">No saved chats yet.</div>
+        </div>
+      </div>
+
+      <!-- Model Config -->
+      <div class="sidebar-section config-section connection-section">
+        <div class="section-label">
+          <span>Connections</span>
+        </div>
+
+        <button class="connection-card model-connection-card" id="model-connect-btn" type="button" aria-expanded="false" aria-controls="model-config-panel">
+          <span class="connection-dot status-off" id="model-status-dot" aria-label="Model not connected"></span>
+          <span class="connection-main">
+            <span class="connection-title">Model</span>
+            <span class="connection-summary" id="model-summary">Not configured</span>
+          </span>
+          <span class="connection-chevron">›</span>
+        </button>
+
+        <div class="config-panel hidden" id="model-config-panel" aria-label="Model configuration panel">
+          <form class="config-form" id="model-config-form" autocomplete="off">
+            <div class="form-field">
+              <label class="field-label" for="model-provider">Provider</label>
+              <select class="field-input field-select" id="model-provider" name="provider">
+                <option value="lmstudio" selected>LM Studio</option>
+                <option value="ollama">Ollama Local</option>
+                <option value="openai">OpenAI</option>
+                <option value="openrouter">OpenRouter</option>
+                <option value="openai_compat">OpenAI-compatible</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label class="field-label" for="model-base-url">Base URL</label>
+              <input class="field-input mono" id="model-base-url" name="base_url" type="text" value="" placeholder="" />
+            </div>
+            <div class="form-field">
+              <label class="field-label" for="model-name">Model</label>
+              <input class="field-input mono" id="model-name" name="model_name" type="text" value="" placeholder="model-id" />
+            </div>
+            <div class="form-field">
+              <label class="field-label" for="model-api-key">API Key</label>
+              <input class="field-input mono" id="model-api-key" name="api_key" type="password" value="" placeholder="API key" autocomplete="new-password" />
+            </div>
+            <div class="config-panel-actions">
+              <button type="button" class="btn-outline btn-sm" id="model-cancel-btn">Cancel</button>
+              <button type="button" class="btn-outline btn-sm" id="model-test-btn">Test Connection</button>
+              <button type="button" class="btn-outline btn-sm save-connection-btn" id="model-save-btn">Save Model</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- DB Config -->
+      <div class="sidebar-section config-section connection-section">
+        <button class="connection-card database-connection-card" id="database-connect-btn" type="button" aria-expanded="false" aria-controls="database-config-panel">
+          <span class="connection-dot status-off" id="database-status-dot" aria-label="Database not connected"></span>
+          <span class="connection-main">
+            <span class="connection-title">Database</span>
+            <span class="connection-summary" id="database-summary">Not configured</span>
+          </span>
+          <span class="connection-chevron">›</span>
+        </button>
+
+        <div class="config-panel hidden" id="database-config-panel" aria-label="Database configuration panel">
+          <form class="config-form" id="database-config-form" autocomplete="off">
+            <div class="form-field">
+              <label class="field-label" for="db-profile-name">Connection Name</label>
+              <input class="field-input" id="db-profile-name" name="profile_name" type="text" value="" placeholder="My database" />
+            </div>
+            <div class="form-field">
+              <label class="field-label" for="db-base-url">Base URL</label>
+              <input class="field-input mono" id="db-base-url" name="base_url" type="text" value="" placeholder="BaseURL" />
+            </div>
+            <div class="form-field">
+              <label class="field-label" for="db-api-key">API Key</label>
+              <input class="field-input mono" id="db-api-key" name="api_key" type="password" value="" placeholder="API key or secret reference" autocomplete="new-password" />
+            </div>
+            <div class="form-field">
+              <label class="field-label" for="db-username">Username</label>
+              <input class="field-input mono" id="db-username" name="username" type="text" value="" placeholder="username" />
+            </div>
+            <div class="form-field database-switch-field">
+              <label class="field-label" for="database-switch-select">Switch Database</label>
+              <div class="database-switch-row">
+                <select class="field-input field-select" id="database-switch-select" name="database_switch">
+                  <option value="">No saved database</option>
+                </select>
+                <button type="button" class="btn-outline btn-sm" id="database-switch-btn">Switch</button>
+              </div>
+            </div>
+            <div class="config-panel-actions">
+              <button type="button" class="btn-outline btn-sm" id="database-cancel-btn">Cancel</button>
+              <button type="button" class="btn-outline btn-sm" id="database-test-btn">Test Connection</button>
+              <button type="button" class="btn-outline btn-sm save-connection-btn" id="database-save-btn">Save / Connect</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Settings -->
+      <div class="sidebar-section settings-section">
+        <button class="settings-btn" id="settings-toggle-btn" type="button" aria-expanded="false" aria-controls="safy-settings-panel">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 8.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" stroke="currentColor" stroke-width="1.2"/><path d="M11.5 7c0-.3 0-.6-.1-.9l1.2-.9-1-1.8-1.4.6c-.5-.4-1-.7-1.6-.9L8.4 2h-2l-.2 1.1c-.6.2-1.1.5-1.6.9l-1.4-.6-1 1.8 1.2.9C3 6.4 3 6.7 3 7s0 .6.1.9l-1.2.9 1 1.8 1.4-.6c.5.4 1 .7 1.6.9l.2 1.1h2l.2-1.1c.6-.2 1.1-.5 1.6-.9l1.4.6 1-1.8-1.2-.9c.1-.3.1-.6.1-.9Z" stroke="currentColor" stroke-width="1.2"/></svg>
+          Settings
+        </button>
+        <div class="settings-panel hidden" id="safy-settings-panel">
+          <div class="settings-panel-title">Interface</div>
+          <label class="settings-row" for="safy-theme-select">
+            <span>Theme</span>
+            <select class="settings-select" id="safy-theme-select">
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+            </select>
+          </label>
+          <label class="settings-toggle-row" for="safy-streaming-toggle">
+            <span>Streaming replies</span>
+            <input type="checkbox" id="safy-streaming-toggle" />
+          </label>
+          <label class="settings-toggle-row" for="safy-auto-readonly-toggle">
+            <span>Auto-run read-only</span>
+            <input type="checkbox" id="safy-auto-readonly-toggle" />
+          </label>
+          <p class="settings-help">SELECT/show runs directly in read-only mode. Write/DDL still uses /Execute + Check Safety.</p>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- ════════════ MAIN CHAT ════════════ -->
+    <main class="main-chat">
+
+      <!-- Chat Thread -->
+      <div class="chat-thread" id="chat-thread">
+
+        <!-- Empty State -->
+        <div class="chat-empty-state" id="chat-empty-state">
+          <div class="empty-icon">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+              <path d="M24 4L42 14V30L24 40L6 30V14L24 4Z" stroke="#38BDF8" stroke-width="1.5" stroke-linejoin="round" opacity="0.4"/>
+              <path d="M24 12L36 18V28L24 34L12 28V18L24 12Z" fill="#38BDF8" fill-opacity="0.08" stroke="#38BDF8" stroke-width="1.2" stroke-linejoin="round" opacity="0.7"/>
+              <circle cx="24" cy="24" r="5" fill="#38BDF8" fill-opacity="0.3"/>
+              <circle cx="24" cy="24" r="2" fill="#38BDF8"/>
+            </svg>
+          </div>
+          <h2 class="empty-title">Safy is ready</h2>
+          <p class="empty-desc">Describe what you want to design, query, or inspect in your database.<br/>Safy will suggest. Sandbox will verify. You confirm.</p>
+
+          <div class="domain-selector">
+            <span class="domain-label">Working domain</span>
+            <div class="domain-chips">
+              <button class="domain-chip">E-commerce</button>
+              <button class="domain-chip">Clinic</button>
+              <button class="domain-chip">Inventory</button>
+              <button class="domain-chip">School</button>
+              <button class="domain-chip">Accounting</button>
+              <button class="domain-chip">SaaS</button>
+              <button class="domain-chip">CMS</button>
+            </div>
+          </div>
+
+          <div class="empty-hints">
+            <div class="hint-card">
+              <span class="hint-icon">🗂</span>
+              <span>Design a schema for product catalog with variants</span>
+            </div>
+            <div class="hint-card">
+              <span class="hint-icon">🔍</span>
+              <span>Inspect the orders table for anomalies</span>
+            </div>
+            <div class="hint-card">
+              <span class="hint-icon">⚡</span>
+              <span>Generate safe SELECT queries for analytics</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sample Chat Messages (will be hidden when empty state shown) -->
+        <div class="chat-messages" id="chat-messages" style="display:none;">
+
+          <div class="message user-message">
+            <div class="message-avatar user-avatar">U</div>
+            <div class="message-content">
+              <div class="message-bubble">
+                Design a PostgreSQL schema for an e-commerce order system with products, customers, and order line items.
+              </div>
+              <div class="message-meta">You · just now</div>
+            </div>
+          </div>
+
+          <div class="message agent-message">
+            <div class="message-avatar agent-avatar">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M8 1.5L14 5V11L8 14.5L2 11V5L8 1.5Z" stroke="#38BDF8" stroke-width="1.2" stroke-linejoin="round"/>
+                <circle cx="8" cy="8" r="2.5" fill="#38BDF8" fill-opacity="0.6"/>
+              </svg>
+            </div>
+            <div class="message-content">
+              <div class="message-bubble agent-bubble">
+                <div class="agent-header">
+                  <span class="agent-label">Safy · Schema Suggestion</span>
+                  <span class="agent-badge sandbox">Sandbox Verified</span>
+                </div>
+                <p>Here's a normalized e-commerce schema with proper foreign key constraints and indexes:</p>
+                <div class="code-block">
+                  <div class="code-block-header">
+                    <span class="code-lang">SQL — PostgreSQL</span>
+                    <button class="code-copy-btn">Copy</button>
+                  </div>
+                  <pre class="code-content">CREATE TABLE customers (
+  id          SERIAL PRIMARY KEY,
+  email       VARCHAR(255) UNIQUE NOT NULL,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE products (
+  id          SERIAL PRIMARY KEY,
+  name        VARCHAR(255) NOT NULL,
+  price       NUMERIC(10,2) NOT NULL,
+  stock_qty   INT DEFAULT 0
+);
+
+CREATE TABLE orders (
+  id           SERIAL PRIMARY KEY,
+  customer_id  INT REFERENCES customers(id),
+  status       VARCHAR(50) DEFAULT 'pending',
+  created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE order_items (
+  id          SERIAL PRIMARY KEY,
+  order_id    INT REFERENCES orders(id),
+  product_id  INT REFERENCES products(id),
+  quantity    INT NOT NULL,
+  unit_price  NUMERIC(10,2) NOT NULL
+);</pre>
+                </div>
+                <div class="agent-actions">
+                  <button class="agent-action-btn">Send to Query Checker →</button>
+                  <button class="agent-action-btn secondary">Explain choices</button>
+                </div>
+              </div>
+              <div class="message-meta">Safy · runtime status</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Domain hint bar (below thread) -->
+      <div class="domain-hint-bar" id="domain-hint-bar">
+        <span class="domain-hint-icon">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.1"/><path d="M6 5v3M6 4h.01" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        </span>
+        <span>Domain: <strong>Auto → E-commerce</strong> (default fallback) · Agent path is read-only</span>
+      </div>
+
+      <!-- Chat Input -->
+      <div class="chat-input-area">
+        <div class="chat-input-wrapper">
+          <div class="context-attachment-strip hidden" id="context-attachment-strip" aria-live="polite">
+            <div class="context-attachment-list" id="context-attachment-list"></div>
+          </div>
+          <p class="context-inline-error hidden" id="context-inline-error" role="alert"></p>
+          <textarea
+            id="chat-input"
+            class="chat-input"
+            placeholder="Chat normally. Start with /Execute to run a database task…"
+            rows="1"
+          ></textarea>
+          <input
+            class="context-file-input"
+            id="context-file-input"
+            type="file"
+            multiple
+            accept=".md,.txt,text/markdown,text/plain"
+            aria-label="Choose Markdown or text files"
+          />
+          <div class="chat-input-controls">
+            <div class="input-left-controls">
+              <button class="input-icon-btn" id="attach-context-btn" type="button" title="Attach .md or .txt files" aria-label="Attach Markdown or text files">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M12.5 7.5L7 13a4 4 0 0 1-5.66-5.66l6-6a2.5 2.5 0 0 1 3.54 3.54L5.5 10a1 1 0 0 1-1.42-1.42L9.5 3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <button class="input-icon-btn" id="attach-url-btn" type="button" title="Attach a public URL" aria-label="Attach a public URL" aria-haspopup="dialog" aria-controls="context-url-modal">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6.6 9.4 9.4 6.6M5.1 10.9 3.7 12.3a2.3 2.3 0 0 1-3.2-3.2l2.6-2.6a2.3 2.3 0 0 1 3.2 0M10.9 5.1l1.4-1.4a2.3 2.3 0 1 1 3.2 3.2l-2.6 2.6a2.3 2.3 0 0 1-3.2 0" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/></svg>
+              </button>
+              <span class="context-source-count hidden" id="context-source-count">0 attached</span>
+            </div>
+            <div class="input-right-controls">
+              <span class="input-hint">⌘↵ send</span>
+              <button class="send-btn" id="send-message-btn">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M14 8L2 2l2 6-2 6 12-6Z" fill="currentColor"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- ════════════ RIGHT SIDEBAR ════════════ -->
+    <aside class="right-sidebar">
+
+      <div class="right-sidebar-header">
+        <span class="right-sidebar-title">Execute</span>
+      </div>
+
+      <div class="query-checker-panel execute-box" id="execute-box">
+        <div class="panel-label">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="4.5" stroke="#38BDF8" stroke-width="1.1"/><path d="M4.5 6h3M6 4.5v3" stroke="#38BDF8" stroke-width="1.1" stroke-linecap="round"/></svg>
+          Execute Box
+        </div>
+        <textarea id="user-query-input" class="user-query-input" placeholder="Generated SQL appears here. You can edit before checking." spellcheck="false"></textarea>
+        <div class="execute-status-grid">
+          <div class="result-info-row"><span class="info-key">Check status</span><span class="info-val mono-sm" id="execute-check-status">Not checked</span></div>
+          <div class="result-info-row"><span class="info-key">Execute status</span><span class="info-val mono-sm" id="execute-run-status">Not executed</span></div>
+          <div class="result-info-row"><span class="info-key">Target used</span><span class="info-val mono-sm" id="execute-target-used">Active database</span></div>
+          <div class="result-info-row"><span class="info-key">Row count</span><span class="info-val mono-sm" id="execute-row-count">-</span></div>
+        </div>
+        <div class="query-actions">
+          <button class="btn-check" id="check-query-btn">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7l3.5 3.5L12 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Check Safety
+          </button>
+          <button class="btn-execute disabled" id="execute-query-btn" disabled>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M4 3l7 4-7 4V3Z" fill="currentColor"/></svg>
+            Execute
+          </button>
+        </div>
+        <div class="execution-summary" id="execution-summary" aria-live="polite">Result summary will appear after execution.</div>
+      </div>
+      <div class="schema-window-launch-card">
+        <button type="button" class="btn-outline schema-open-btn" id="schema-open-btn">Open Schema Graph</button>
+        <p class="schema-window-launch-hint" id="schema-window-launch-hint">Schema Graph replaces the Dashboard view and keeps browser Back navigation.</p>
+      </div>
+
+      <div class="normalized-error-card"
+ id="normalized-error" style="display:none;">
+        <div class="panel-label danger-label">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="#EF4444" stroke-width="1.1"/><path d="M4 4l4 4M8 4l-4 4" stroke="#EF4444" stroke-width="1.2" stroke-linecap="round"/></svg>
+          Execute Error
+        </div>
+        <div class="error-body">
+          <div class="error-code-line"><span class="error-code-badge" id="execute-error-code">SQL_BLOCKED</span></div>
+          <p class="error-message" id="execute-error-message">Query is blocked by policy.</p>
+          <p class="field-help" id="execute-error-hint">Review the SQL and run Check Safety again.</p>
+        </div>
+      </div>
+
+    </aside>
+
+  </div><!-- end app-body -->
+</div><!-- end app-shell -->
+
+<div class="context-source-modal hidden" id="context-url-modal" role="dialog" aria-modal="true" aria-labelledby="context-url-title">
+  <div class="context-source-backdrop" id="context-url-backdrop"></div>
+  <section class="context-source-panel context-url-panel">
+    <div class="context-source-header">
+      <div>
+        <h2 id="context-url-title">Attach public URL</h2>
+        <p>SAFY fetches readable text from one public HTTP/HTTPS page and uses it only for the next message.</p>
+      </div>
+      <button class="btn-outline btn-sm" id="context-url-close-btn" type="button">Close</button>
+    </div>
+    <label class="field-label" for="context-url-input">Public URL</label>
+    <div class="context-url-row">
+      <input class="field-input mono" id="context-url-input" type="url" placeholder="https://example.com/document" autocomplete="off" />
+      <button class="btn-primary context-url-add-btn" id="context-url-add-btn" type="button">Attach link</button>
+    </div>
+    <p class="field-help">Local/private network addresses are blocked. Query tokens are not retained in context metadata.</p>
+    <p class="context-source-error hidden" id="context-source-error" role="alert"></p>
+  </section>
+</div>
+
+<script src="/static/dashboard.js" defer></script>
+</body>
+</html>

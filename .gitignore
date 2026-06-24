@@ -13,6 +13,7 @@ Data/secrets/
 Data/TestFixtures/supabase/*.backup
 Data/TestFixtures/supabase/*.backup.gz
 Data/TestFixtures/supabase/*.dump
+current_state.md
 
 .env
 .env.local

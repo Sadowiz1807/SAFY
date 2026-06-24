@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+  <title>SAFY Schema Graph</title>
+</head>
+<body class="schema-page">
+  <main class="schema-page-shell">
+    <header class="schema-page-header">
+      <div class="schema-page-heading-row">
+        <a class="schema-back-icon" href="/Dashboard" aria-label="Back to Dashboard" title="Back to Dashboard">←</a>
+        <div>
+          <div class="schema-page-brand">SAFY / DASHBOARD</div>
+          <h1 id="schema-page-title">Schema Graph</h1>
+          <p id="schema-graph-status">Loading active database schema…</p>
+        </div>
+      </div>
+      <div class="schema-graph-actions">
+        <button type="button" class="btn-outline btn-xs" id="schema-refresh-btn">Refresh</button>
+        <button type="button" class="btn-outline btn-xs" id="schema-delete-btn">Delete active</button>
+        <button type="button" class="btn-outline btn-xs danger-soft" id="schema-reset-btn">Reset all</button>
+      </div>
+    </header>
+
+    <section class="schema-page-summary" id="schema-page-summary" aria-live="polite"></section>
+
+    <section class="schema-canvas-panel" aria-label="Interactive schema graph">
+      <div class="schema-canvas-toolbar" aria-label="Schema graph view controls">
+        <button type="button" class="schema-tool-btn" id="schema-zoom-out-btn" aria-label="Zoom out" title="Zoom out">−</button>
+        <span class="schema-zoom-readout" id="schema-zoom-readout">100%</span>
+        <button type="button" class="schema-tool-btn" id="schema-zoom-in-btn" aria-label="Zoom in" title="Zoom in">+</button>
+        <button type="button" class="schema-tool-btn schema-tool-btn-wide" id="schema-fit-btn" title="Fit all tables">Fit</button>
+        <button type="button" class="schema-tool-btn schema-tool-btn-wide" id="schema-reset-view-btn" title="Reset zoom and pan">Reset</button>
+      </div>
+      <div class="schema-relationship-legend" aria-label="Relationship legend">
+        <span><i class="schema-legend-line foreign-key"></i>Foreign key</span>
+        <span><i class="schema-legend-line inheritance"></i>Inheritance</span>
+        <span><i class="schema-legend-line partition-parent"></i>Partition</span>
+        <span><i class="schema-legend-line dependency"></i>View dependency</span>
+      </div>
+      <div class="schema-graph-body schema-page-body" id="schema-graph-body" tabindex="0">
+        <div class="schema-empty-state">Loading schema graph…</div>
+      </div>
+    </section>
+
+    <section class="normalized-error-card schema-page-error" id="schema-page-error" hidden>
+      <div class="panel-label danger-label">Schema Graph Error</div>
+      <div class="error-body">
+        <div class="error-code-line"><span class="error-code-badge" id="schema-error-code">SCHEMA_ERROR</span></div>
+        <p class="error-message" id="schema-error-message"></p>
+        <p class="field-help" id="schema-error-hint"></p>
+      </div>
+    </section>
+  </main>
+  <script src="/static/schema-graph.js" defer></script>
+</body>
+</html>

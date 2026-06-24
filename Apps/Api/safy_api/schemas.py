@@ -85,6 +85,12 @@ class AgentChatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class ContextUrlFetchRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=2048)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class SessionCreateRequest(BaseModel):
     chat_id: str | None = None
     metadata: dict = Field(default_factory=dict)
