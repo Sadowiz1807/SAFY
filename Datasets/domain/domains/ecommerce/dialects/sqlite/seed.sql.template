@@ -1,0 +1,1 @@
+INSERT INTO {{TABLE_NAME}} ({{COLUMN_NAME}}) VALUES ('synthetic_value_1');

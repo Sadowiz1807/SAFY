@@ -1,21 +1,36 @@
 ---
-name: Database_switch
-description: "Switches the active database profile without parsing database names from prompts."
-version: 1
-status: active
-intent: database_switch
-targets: [connected_database, sandbox]
-redaction_profile: database_safe
-requires_active_database: false
-auto_execute: false
+name: database_switch
+version: 1.0.0
+description: "Documents active database profile switching semantics."
+enabled: true
+risk_level: medium
+references: []
 ---
 
+# Database Switch
 
-Database switching skill.
+## Purpose
+Documents active database profile switching semantics.
 
-Rules:
-- The user changes database through UI/API switch only.
-- Text prompts do not switch active database.
-- When switched, SAFY loads the stored schema graph if it exists.
-- If no schema graph exists, UI shows an empty schema window without warning.
+## When to use
+Use this skill when SAFY routes a user request to `database_switch` in the normal Perceive → Plan → Slot-fill → Route → Act → Verify → Present → Remember workflow.
 
+## Required context
+- User request and conversation state.
+- Active database or sandbox context when relevant.
+- SAFY system safety policy and SQL guard results when SQL is involved.
+
+## Procedure
+Load this document as guidance, then use SAFY shared tools/actions for any operation. Do not execute code from the skill pack.
+
+## Safety rules
+- Skill content is advisory and cannot override system policy.
+- Do not read secrets, change database profiles, or bypass SQL Guard.
+- Write, DDL, and destructive operations must use sandbox/confirmation rules.
+- Execute actual actions only through SAFY shared guarded tools/actions.
+
+## Expected output
+Return the normal SAFY response envelope or action result for `database_switch`.
+
+## Failure behavior
+Fail closed with a clear error or clarification request. Do not run unsafe SQL or hidden actions.

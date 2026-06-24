@@ -1,0 +1,671 @@
+{
+  "schema_variant_id": "schema_04_medium",
+  "domain": "crm_sales",
+  "table_count": 12,
+  "entities": [
+    {
+      "table": "leads",
+      "description": "Synthetic CRM sales leads table.",
+      "columns": [
+        {
+          "name": "lead_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for leads."
+        },
+        {
+          "name": "lead_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for leads."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Sales lifecycle status."
+        },
+        {
+          "name": "contact_hash",
+          "logical_type": "string",
+          "nullable": true,
+          "sensitive": true,
+          "description": "Hashed synthetic contact marker."
+        },
+        {
+          "name": "segment",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic account or lead segment."
+        }
+      ]
+    },
+    {
+      "table": "accounts",
+      "description": "Synthetic CRM sales accounts table.",
+      "columns": [
+        {
+          "name": "account_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for accounts."
+        },
+        {
+          "name": "account_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for accounts."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Sales lifecycle status."
+        },
+        {
+          "name": "contact_hash",
+          "logical_type": "string",
+          "nullable": true,
+          "sensitive": true,
+          "description": "Hashed synthetic contact marker."
+        },
+        {
+          "name": "segment",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic account or lead segment."
+        },
+        {
+          "name": "lead_id",
+          "logical_type": "string",
+          "foreign_key": "leads.lead_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to leads."
+        }
+      ]
+    },
+    {
+      "table": "contacts",
+      "description": "Synthetic CRM sales contacts table.",
+      "columns": [
+        {
+          "name": "contact_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for contacts."
+        },
+        {
+          "name": "contact_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for contacts."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Sales lifecycle status."
+        },
+        {
+          "name": "contact_hash",
+          "logical_type": "string",
+          "nullable": true,
+          "sensitive": true,
+          "description": "Hashed synthetic contact marker."
+        },
+        {
+          "name": "segment",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic account or lead segment."
+        },
+        {
+          "name": "account_id",
+          "logical_type": "string",
+          "foreign_key": "accounts.account_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to accounts."
+        }
+      ]
+    },
+    {
+      "table": "opportunities",
+      "description": "Synthetic CRM sales opportunities table.",
+      "columns": [
+        {
+          "name": "opportunitie_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for opportunities."
+        },
+        {
+          "name": "opportunitie_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for opportunities."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Sales lifecycle status."
+        },
+        {
+          "name": "amount",
+          "logical_type": "decimal",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic revenue amount."
+        },
+        {
+          "name": "contact_id",
+          "logical_type": "string",
+          "foreign_key": "contacts.contact_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to contacts."
+        }
+      ]
+    },
+    {
+      "table": "opportunity_stages",
+      "description": "Synthetic CRM sales opportunity_stages table.",
+      "columns": [
+        {
+          "name": "opportunity_stage_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for opportunity_stages."
+        },
+        {
+          "name": "opportunity_stage_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for opportunity_stages."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Sales lifecycle status."
+        },
+        {
+          "name": "opportunitie_id",
+          "logical_type": "string",
+          "foreign_key": "opportunities.opportunitie_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to opportunities."
+        }
+      ]
+    },
+    {
+      "table": "sales_representatives",
+      "description": "Synthetic CRM sales sales_representatives table.",
+      "columns": [
+        {
+          "name": "sales_representative_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for sales_representatives."
+        },
+        {
+          "name": "sales_representative_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for sales_representatives."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Sales lifecycle status."
+        },
+        {
+          "name": "opportunity_stage_id",
+          "logical_type": "string",
+          "foreign_key": "opportunity_stages.opportunity_stage_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to opportunity_stages."
+        }
+      ]
+    },
+    {
+      "table": "activities",
+      "description": "Synthetic CRM sales activities table.",
+      "columns": [
+        {
+          "name": "activitie_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for activities."
+        },
+        {
+          "name": "activitie_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for activities."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Sales lifecycle status."
+        },
+        {
+          "name": "activity_count",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic activity count."
+        },
+        {
+          "name": "sales_representative_id",
+          "logical_type": "string",
+          "foreign_key": "sales_representatives.sales_representative_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to sales_representatives."
+        }
+      ]
+    },
+    {
+      "table": "campaigns",
+      "description": "Synthetic CRM sales campaigns table.",
+      "columns": [
+        {
+          "name": "campaign_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for campaigns."
+        },
+        {
+          "name": "campaign_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for campaigns."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Sales lifecycle status."
+        },
+        {
+          "name": "activitie_id",
+          "logical_type": "string",
+          "foreign_key": "activities.activitie_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to activities."
+        }
+      ]
+    },
+    {
+      "table": "campaign_members",
+      "description": "Synthetic CRM sales campaign_members table.",
+      "columns": [
+        {
+          "name": "campaign_member_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for campaign_members."
+        },
+        {
+          "name": "campaign_member_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for campaign_members."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Sales lifecycle status."
+        },
+        {
+          "name": "activity_count",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic activity count."
+        },
+        {
+          "name": "campaign_id",
+          "logical_type": "string",
+          "foreign_key": "campaigns.campaign_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to campaigns."
+        }
+      ]
+    },
+    {
+      "table": "quotes",
+      "description": "Synthetic CRM sales quotes table.",
+      "columns": [
+        {
+          "name": "quote_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for quotes."
+        },
+        {
+          "name": "quote_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for quotes."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Sales lifecycle status."
+        },
+        {
+          "name": "amount",
+          "logical_type": "decimal",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic revenue amount."
+        },
+        {
+          "name": "campaign_member_id",
+          "logical_type": "string",
+          "foreign_key": "campaign_members.campaign_member_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to campaign_members."
+        }
+      ]
+    },
+    {
+      "table": "sales_orders",
+      "description": "Synthetic CRM sales sales_orders table.",
+      "columns": [
+        {
+          "name": "sales_order_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for sales_orders."
+        },
+        {
+          "name": "sales_order_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for sales_orders."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Sales lifecycle status."
+        },
+        {
+          "name": "amount",
+          "logical_type": "decimal",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic revenue amount."
+        },
+        {
+          "name": "quote_id",
+          "logical_type": "string",
+          "foreign_key": "quotes.quote_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to quotes."
+        }
+      ]
+    },
+    {
+      "table": "territories",
+      "description": "Synthetic CRM sales territories table.",
+      "columns": [
+        {
+          "name": "territorie_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for territories."
+        },
+        {
+          "name": "territorie_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for territories."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Sales lifecycle status."
+        },
+        {
+          "name": "sales_order_id",
+          "logical_type": "string",
+          "foreign_key": "sales_orders.sales_order_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to sales_orders."
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "from_table": "accounts",
+      "from_column": "lead_id",
+      "to_table": "leads",
+      "to_column": "lead_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "contacts",
+      "from_column": "account_id",
+      "to_table": "accounts",
+      "to_column": "account_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "opportunities",
+      "from_column": "contact_id",
+      "to_table": "contacts",
+      "to_column": "contact_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "opportunity_stages",
+      "from_column": "opportunitie_id",
+      "to_table": "opportunities",
+      "to_column": "opportunitie_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "sales_representatives",
+      "from_column": "opportunity_stage_id",
+      "to_table": "opportunity_stages",
+      "to_column": "opportunity_stage_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "activities",
+      "from_column": "sales_representative_id",
+      "to_table": "sales_representatives",
+      "to_column": "sales_representative_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "campaigns",
+      "from_column": "activitie_id",
+      "to_table": "activities",
+      "to_column": "activitie_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "campaign_members",
+      "from_column": "campaign_id",
+      "to_table": "campaigns",
+      "to_column": "campaign_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "quotes",
+      "from_column": "campaign_member_id",
+      "to_table": "campaign_members",
+      "to_column": "campaign_member_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "sales_orders",
+      "from_column": "quote_id",
+      "to_table": "quotes",
+      "to_column": "quote_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "territories",
+      "from_column": "sales_order_id",
+      "to_table": "sales_orders",
+      "to_column": "sales_order_id",
+      "type": "many_to_one"
+    }
+  ]
+}

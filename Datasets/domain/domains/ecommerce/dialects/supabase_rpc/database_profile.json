@@ -1,0 +1,10 @@
+{
+  "database_type": "supabase_rpc",
+  "database_engine": "postgresql",
+  "sql_dialect": "postgres",
+  "driver": "supabase_rpc",
+  "provider": "supabase",
+  "execution_transport": "postgrest_rpc",
+  "template_only": true,
+  "contains_secret": false
+}

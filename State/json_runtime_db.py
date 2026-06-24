@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+import hashlib
 import json
 import uuid
 
@@ -9,8 +10,11 @@ from Logging.redact import redact_obj, redact_text
 from State.runtime_db import RuntimeDBError, now_iso
 
 
+SCHEMA_VERSION = 2
+
 _ROW_KEYS = {"rows", "result_rows", "data_rows", "sample_rows", "records"}
-_RESULT_CONTAINER_KEYS = {"chat_display", "query_result", "execute", "execution_result", "result", "payload", "data"}
+_OMITTED_PAYLOAD_KEYS = {"rpc_response"}
+_RESULT_CONTAINER_KEYS = {"chat_display", "query_result", "execute", "execution_result", "result", "payload", "data", "response", "rpc_response"}
 
 
 def _looks_like_row_list(value: Any) -> bool:
@@ -25,7 +29,9 @@ def _strip_result_rows(value: Any, *, in_result_container: bool = False) -> Any:
         for key, item in value.items():
             key_text = str(key)
             child_result_container = in_result_container or key_text in _RESULT_CONTAINER_KEYS
-            if key_text in _ROW_KEYS or (child_result_container and _looks_like_row_list(item)):
+            if key_text in _OMITTED_PAYLOAD_KEYS:
+                result[key] = "<provider response omitted>"
+            elif key_text in _ROW_KEYS or (child_result_container and _looks_like_row_list(item)):
                 result[key] = "<display-only rows omitted>"
             else:
                 result[key] = _strip_result_rows(item, in_result_container=child_result_container)
@@ -39,12 +45,13 @@ def _strip_result_rows(value: Any, *, in_result_container: bool = False) -> Any:
 
 def _read(path: Path) -> dict[str, Any]:
     if not path.exists():
-        return {"schema_version": 2, "session": {}, "messages": [], "workspaces": [], "recovery_records": [], "locks": [], "agent_state": {}, "workflow_events": [], "tool_calls": []}
+        return {"schema_version": SCHEMA_VERSION, "session": {}, "messages": [], "workspaces": [], "recovery_records": [], "locks": [], "agent_state": {}, "workflow_events": [], "tool_calls": []}
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _write(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    data.setdefault("schema_version", SCHEMA_VERSION)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(data, indent=2, sort_keys=True, ensure_ascii=True), encoding="utf-8")
     tmp.replace(path)
@@ -56,7 +63,13 @@ class JsonRuntimeDB:
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
 
     def _path(self, chat_id: str) -> Path:
-        safe = "".join(ch if ch.isalnum() or ch in "_-" else "_" for ch in chat_id)
+        raw = str(chat_id or "").strip()
+        safe = "".join(ch if ch.isalnum() or ch in "_-" else "_" for ch in raw)
+        if not safe:
+            safe = "session"
+        if safe != raw or len(safe) > 80:
+            digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
+            safe = f"{safe[:64].rstrip('_-') or 'session'}_{digest}"
         return self.sessions_dir / f"session_{safe}.json"
 
     def init(self) -> None:
@@ -65,12 +78,20 @@ class JsonRuntimeDB:
     def close(self) -> None:
         pass
 
-    def check_version(self, expected: int = 1) -> int:
-        self.init(); return 1
+    def check_version(self, expected: int = SCHEMA_VERSION) -> int:
+        self.init()
+        for path in self.sessions_dir.glob("session_*.json"):
+            version = int(_read(path).get("schema_version") or 1)
+            if version != expected:
+                raise RuntimeDBError(
+                    "RUNTIME_SCHEMA_VERSION_MISMATCH",
+                    f"JSON runtime schema version mismatch in {path.name}: expected {expected}, found {version}.",
+                )
+        return expected
 
     def record_provenance(self, object_id: str, object_type: str, source: str, created_by: str, stage: str = "Stage 2", metadata: dict[str, Any] | None = None) -> dict[str, Any]:
         chat_id = "provenance"; self.create_session(chat_id); path = self._path(chat_id); data = _read(path)
-        rec = {"object_id": object_id, "object_type": object_type, "source": source, "created_by": created_by, "created_at": now_iso(), "stage": stage, "metadata": redact_obj(metadata or {})}
+        rec = {"object_id": object_id, "object_type": object_type, "source": source, "created_by": created_by, "created_at": now_iso(), "stage": stage, "metadata": self._safe_metadata(metadata)}
         data.setdefault("provenance", []).append(rec); _write(path, data); return rec
 
     def get_provenance(self, object_id: str) -> dict[str, Any]:
@@ -81,7 +102,7 @@ class JsonRuntimeDB:
 
     def create_schema_snapshot(self, workspace_id: str, source: str, schema_hash: str, schema_json: dict[str, Any], metadata: dict[str, Any] | None = None, snapshot_id: str | None = None) -> dict[str, Any]:
         ws = self.get_workspace(workspace_id); path = self._path(ws["chat_id"]); data = _read(path)
-        rec = {"snapshot_id": snapshot_id or f"snap_{uuid.uuid4().hex}", "workspace_id": workspace_id, "source": source, "schema_hash": schema_hash, "schema": schema_json, "created_at": now_iso(), "invalidated_at": None, "metadata": redact_obj(metadata or {})}
+        rec = {"snapshot_id": snapshot_id or f"snap_{uuid.uuid4().hex}", "workspace_id": workspace_id, "source": source, "schema_hash": schema_hash, "schema": schema_json, "created_at": now_iso(), "invalidated_at": None, "metadata": self._safe_metadata(metadata)}
         data.setdefault("schema_snapshots", []).append(rec); _write(path, data); return rec
 
     def get_schema_snapshot(self, snapshot_id: str) -> dict[str, Any]:
@@ -160,7 +181,7 @@ class JsonRuntimeDB:
         self.create_session(chat_id)
         path = self._path(chat_id)
         data = _read(path)
-        rec = {"event_id": f"wf_evt_{uuid.uuid4().hex}", "chat_id": chat_id, "workflow_id": workflow_id, "stage": stage, "status": status, "created_at": now_iso(), "metadata": redact_obj(metadata or {})}
+        rec = {"event_id": f"wf_evt_{uuid.uuid4().hex}", "chat_id": chat_id, "workflow_id": workflow_id, "stage": stage, "status": status, "created_at": now_iso(), "metadata": self._safe_metadata(metadata)}
         data.setdefault("workflow_events", []).append(rec)
         data["workflow_events"] = data["workflow_events"][-500:]
         _write(path, data)
@@ -174,7 +195,7 @@ class JsonRuntimeDB:
         self.create_session(chat_id)
         path = self._path(chat_id)
         data = _read(path)
-        rec = {"tool_call_id": f"tool_call_{uuid.uuid4().hex}", "chat_id": chat_id, "workflow_id": workflow_id, "tool_name": tool_name, "status": status, "risk_class": risk_class, "created_at": now_iso(), "metadata": redact_obj(metadata or {})}
+        rec = {"tool_call_id": f"tool_call_{uuid.uuid4().hex}", "chat_id": chat_id, "workflow_id": workflow_id, "tool_name": tool_name, "status": status, "risk_class": risk_class, "created_at": now_iso(), "metadata": self._safe_metadata(metadata)}
         data.setdefault("tool_calls", []).append(rec)
         data["tool_calls"] = data["tool_calls"][-500:]
         _write(path, data)
@@ -195,7 +216,7 @@ class JsonRuntimeDB:
     def register_workspace(self, workspace_id: str, chat_id: str, path_redacted: str, status: str = "active", metadata: dict[str, Any] | None = None) -> dict[str, Any]:
         self.create_session(chat_id)
         path=self._path(chat_id); data=_read(path)
-        rec={"workspace_id": workspace_id, "chat_id": chat_id, "path_redacted": redact_text(path_redacted), "status": status, "created_at": now_iso(), "metadata": redact_obj(metadata or {})}
+        rec={"workspace_id": workspace_id, "chat_id": chat_id, "path_redacted": redact_text(path_redacted), "status": status, "created_at": now_iso(), "metadata": self._safe_metadata(metadata)}
         data.setdefault("workspaces", []).append(rec); _write(path,data); return rec
 
     def _all_workspaces(self):
@@ -230,7 +251,7 @@ class JsonRuntimeDB:
 
     def add_recovery_record(self, type: str, severity: str, status: str, summary: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
         chat_id="recovery"; self.create_session(chat_id); path=self._path(chat_id); data=_read(path)
-        rec={"recovery_id": f"rec_{uuid.uuid4().hex}", "type": type, "severity": severity, "status": status, "summary": redact_text(summary), "created_at": now_iso(), "updated_at": now_iso(), "metadata": redact_obj(metadata or {})}
+        rec={"recovery_id": f"rec_{uuid.uuid4().hex}", "type": type, "severity": severity, "status": status, "summary": redact_text(summary), "created_at": now_iso(), "updated_at": now_iso(), "metadata": self._safe_metadata(metadata)}
         data.setdefault("recovery_records", []).append(rec); _write(path,data); return rec
 
     def list_recovery_records(self, status: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
@@ -252,7 +273,7 @@ class JsonRuntimeDB:
                 if rec.get("recovery_id") == recovery_id:
                     rec["status"]=status; rec["updated_at"]=now_iso()
                     if summary: rec["summary"]=redact_text(summary)
-                    if metadata is not None: rec["metadata"]=redact_obj(metadata)
+                    if metadata is not None: rec["metadata"] = self._safe_metadata(metadata)
                     _write(path,data); return rec
         raise RuntimeDBError("RECOVERY_RECORD_NOT_FOUND", f"Recovery record not found: {recovery_id}")
 
@@ -262,7 +283,7 @@ class JsonRuntimeDB:
         active = [lock for lock in data.get("locks", []) if lock.get("workspace_id") == workspace_id and lock.get("status") == "active" and lock.get("released_at") is None]
         if active:
             raise RuntimeDBError("WORKSPACE_LOCKED", f"Workspace is locked: {workspace_id}")
-        rec = {"lock_id": lock_id or f"lock_{uuid.uuid4().hex}", "workspace_id": workspace_id, "owner": owner, "reason": reason, "status": "active", "created_at": now_iso(), "expires_at": expires_at, "released_at": None, "metadata": redact_obj(metadata or {})}
+        rec = {"lock_id": lock_id or f"lock_{uuid.uuid4().hex}", "workspace_id": workspace_id, "owner": owner, "reason": reason, "status": "active", "created_at": now_iso(), "expires_at": expires_at, "released_at": None, "metadata": self._safe_metadata(metadata)}
         data.setdefault("locks", []).append(rec); _write(path, data); return rec
 
     def release_workspace_lock(self, lock_id: str) -> dict[str, Any]:

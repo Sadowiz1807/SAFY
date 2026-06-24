@@ -26,7 +26,7 @@ from .result_summarizer import summarize_create_database
 from .skill_loader import load_skill
 from .skill_policy import SkillPolicy
 from .skill_router import route_skill
-from Skills.Create_database.domain_rules import resolve_domain
+from .skill_actions import resolve_domain
 from Gateway.query_orchestrator import QueryOrchestrator, QueryOrchestratorContext
 from DataStore.config_loader import ConfigLoader, get_repo_root
 from DataStore.profile_store import database_profile_store, ProfileStoreError

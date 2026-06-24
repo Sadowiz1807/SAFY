@@ -1,0 +1,8 @@
+{
+  "provider": "google_cloud_sql",
+  "database_type": "postgresql",
+  "engine": "postgresql",
+  "dialect": "postgres",
+  "template_only": true,
+  "contains_secret": false
+}

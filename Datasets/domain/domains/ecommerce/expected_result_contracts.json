@@ -1,0 +1,6 @@
+{
+  "read_only": "rows or aggregate",
+  "write": "sandbox preview then confirmation",
+  "ddl": "sandbox migration preview",
+  "blocked": "policy refusal"
+}

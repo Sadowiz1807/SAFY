@@ -5,9 +5,10 @@ from typing import Any
 import sqlite3
 import time
 
-from .base import DEFAULT_ROW_LIMIT, SecretContext, is_sensitive_name, query_result, success_envelope, profile_id, user_execution_result
+from .base import bounded_row_limit, DEFAULT_ROW_LIMIT, SecretContext, is_sensitive_name, query_result, success_envelope, profile_id, user_execution_result
 from .errors import DriverError
 from Gateway.sql_classifier import classify_sql
+from Gateway.sql_normalizer import normalize_sql
 
 class SQLiteDriver:
     driver = "sqlite"
@@ -54,19 +55,52 @@ class SQLiteDriver:
         return success_envelope(self.driver, profile, {"database": str(self._path(profile)), "schemas": ["main"], "tables": tables, "sample_rows_included": False})
 
     def execute_readonly(self, sql: str, profile: dict[str, Any], secret_context: SecretContext | None = None, options: dict[str, Any] | None = None) -> dict[str, Any]:
-        row_limit = int((options or {}).get("row_limit") or DEFAULT_ROW_LIMIT)
+        row_limit = bounded_row_limit((options or {}).get("row_limit"), DEFAULT_ROW_LIMIT)
         started=time.perf_counter()
         with self._connect(profile) as conn:
             cur=conn.execute(sql)
             return query_result(self.driver, profile, cur, started, row_limit)
 
     def execute_user_sql(self, sql: str, profile: dict[str, Any], secret_context: SecretContext | None = None, options: dict[str, Any] | None = None) -> dict[str, Any]:
-        row_limit = int((options or {}).get("row_limit") or DEFAULT_ROW_LIMIT)
-        classification = classify_sql(sql)
+        row_limit = bounded_row_limit((options or {}).get("row_limit"), DEFAULT_ROW_LIMIT)
+        normalized = normalize_sql(sql)
+        statements = normalized.statements
+        if not statements:
+            raise DriverError("DB_EXECUTION_FAILED", "SQL is empty.")
+        classification = classify_sql(statements[0]) if len(statements) == 1 else None
         started=time.perf_counter()
-        with self._connect(profile, read_only=False) as conn:
-            cur=conn.execute(sql)
+        conn = self._connect(profile, read_only=False)
+        try:
+            conn.execute("BEGIN")
+            if len(statements) == 1:
+                cur=conn.execute(statements[0])
+                if cur.description:
+                    payload = query_result(self.driver, profile, cur, started, row_limit)
+                    conn.commit()
+                    return payload
+                row_count = cur.rowcount
+                conn.commit()
+                return user_execution_result(self.driver, profile, started, row_count=row_count, statement_type=classification.statement_type if classification else "SQL")
+
+            total_row_count = 0
+            for statement in statements:
+                cur = conn.execute(statement)
+                if isinstance(cur.rowcount, int) and cur.rowcount > 0:
+                    total_row_count += cur.rowcount
+                cur.close()
             conn.commit()
-            if cur.description:
-                return query_result(self.driver, profile, cur, started, row_limit)
-            return user_execution_result(self.driver, profile, started, row_count=cur.rowcount, statement_type=classification.statement_type)
+            payload = user_execution_result(self.driver, profile, started, row_count=total_row_count, statement_type="BATCH")
+            payload["metadata"].update({"statement_count": len(statements), "transactional_batch": True})
+            return payload
+        except DriverError:
+            conn.rollback()
+            raise
+        except Exception as exc:
+            conn.rollback()
+            raise DriverError(
+                "DB_EXECUTION_FAILED",
+                str(exc),
+                {"driver": self.driver, "statement_count": len(statements)},
+            ) from exc
+        finally:
+            conn.close()

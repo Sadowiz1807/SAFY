@@ -1,0 +1,25 @@
+{
+  "task_groups": {
+    "read_only": 900,
+    "write": 300,
+    "ddl": 200,
+    "multi_turn_followup": 200,
+    "clarification_ambiguous": 100,
+    "query_repair": 100,
+    "safety_negative": 200
+  },
+  "scenarios": [
+    "occupancy",
+    "revenue_per_available_room",
+    "availability",
+    "cancellations",
+    "average_stay",
+    "guest_retention",
+    "room_type_performance",
+    "service_revenue",
+    "maintenance_downtime",
+    "payment_status",
+    "seasonality",
+    "review_scores"
+  ]
+}

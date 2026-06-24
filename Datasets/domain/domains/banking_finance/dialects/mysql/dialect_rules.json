@@ -1,0 +1,5 @@
+{
+  "database_type": "mysql",
+  "dialect": "mysql",
+  "notes": "Resolved real dialect metadata, no scaffold artifacts."
+}

@@ -1,0 +1,23 @@
+{
+  "database_type": "sqlite",
+  "types": {
+    "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+    "string": "TEXT",
+    "datetime": "TEXT",
+    "boolean": "INTEGER",
+    "json": "TEXT"
+  },
+  "pagination": "LIMIT {n}",
+  "notes": [
+    "Use sqlite3.",
+    "Represent booleans as 0/1.",
+    "Use strftime/date functions for time logic."
+  ],
+  "required_validation": [
+    "parse_with_target_dialect",
+    "execute_on_disposable_target",
+    "verify_schema_references",
+    "verify_result_contract",
+    "verify_risk_and_route_labels"
+  ]
+}

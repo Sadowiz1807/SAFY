@@ -1,0 +1,12 @@
+{
+  "provider": "self_hosted",
+  "overlay_type": "deployment_provider",
+  "redefines_sql_dialect": false,
+  "database_types": [
+    "sqlite",
+    "mysql",
+    "postgresql",
+    "sqlserver",
+    "oracle"
+  ]
+}

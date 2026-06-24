@@ -86,28 +86,29 @@ agent:
 ```
 
 ## 3. skills.yaml
-`skills.yaml` maps skills to Skill.md locations and compiled policies.
+`skills.yaml` indexes document-driven skill packs. Each built-in skill uses
+`Skills/<skill_name>/SKILL.md`; optional references stay inside the same skill
+directory and load lazily only when the skill is selected.
 
 Example:
 
 ```yaml
+skills_root: Skills
+skill_filename: SKILL.md
+enable_legacy_skill_loading: false
 skills:
   create_database:
-    path: Skills/Create_database/Skill.md
-    enabled: true
-    policy: create_database_sandbox
+    path: Skills/create_database
+    status: active
   text_to_sql:
-    path: Skills/Text_to_sql/Skill.md
-    enabled: true
-    policy: connected_read_only
-  read_schema:
-    path: Skills/Read_schema/Skill.md
-    enabled: true
-    policy: connected_read_only
-  explain_query:
-    path: Skills/Explain_query/Skill.md
-    enabled: true
-    policy: connected_read_only
+    path: Skills/text_to_sql
+    status: active
+  schema_graph:
+    path: Skills/schema_graph
+    status: active
+  query_explain:
+    path: Skills/query_explain
+    status: active
 ```
 
 ## 4. toolsets.yaml

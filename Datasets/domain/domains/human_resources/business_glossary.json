@@ -1,0 +1,101 @@
+{
+  "domain": "human_resources",
+  "terms": [
+    {
+      "term": "employees",
+      "definition": "Synthetic human resources concept for employees."
+    },
+    {
+      "term": "departments",
+      "definition": "Synthetic human resources concept for departments."
+    },
+    {
+      "term": "positions",
+      "definition": "Synthetic human resources concept for positions."
+    },
+    {
+      "term": "employment_contracts",
+      "definition": "Synthetic human resources concept for employment_contracts."
+    },
+    {
+      "term": "attendance",
+      "definition": "Synthetic human resources concept for attendance."
+    },
+    {
+      "term": "work_shifts",
+      "definition": "Synthetic human resources concept for work_shifts."
+    },
+    {
+      "term": "leave_requests",
+      "definition": "Synthetic human resources concept for leave_requests."
+    },
+    {
+      "term": "leave_balances",
+      "definition": "Synthetic human resources concept for leave_balances."
+    },
+    {
+      "term": "payroll_runs",
+      "definition": "Synthetic human resources concept for payroll_runs."
+    },
+    {
+      "term": "payroll_items",
+      "definition": "Synthetic human resources concept for payroll_items."
+    },
+    {
+      "term": "performance_reviews",
+      "definition": "Synthetic human resources concept for performance_reviews."
+    },
+    {
+      "term": "training_courses",
+      "definition": "Synthetic human resources concept for training_courses."
+    },
+    {
+      "term": "employee_training",
+      "definition": "Synthetic human resources concept for employee_training."
+    },
+    {
+      "term": "managers",
+      "definition": "Synthetic human resources concept for managers."
+    },
+    {
+      "term": "office_locations",
+      "definition": "Synthetic human resources concept for office_locations."
+    },
+    {
+      "term": "benefit_plans",
+      "definition": "Synthetic human resources concept for benefit_plans."
+    },
+    {
+      "term": "employee_benefits",
+      "definition": "Synthetic human resources concept for employee_benefits."
+    },
+    {
+      "term": "recruiting_requisitions",
+      "definition": "Synthetic human resources concept for recruiting_requisitions."
+    },
+    {
+      "term": "candidates",
+      "definition": "Synthetic human resources concept for candidates."
+    },
+    {
+      "term": "interviews",
+      "definition": "Synthetic human resources concept for interviews."
+    },
+    {
+      "term": "disciplinary_actions",
+      "definition": "Synthetic human resources concept for disciplinary_actions."
+    },
+    {
+      "term": "promotion_history",
+      "definition": "Synthetic human resources concept for promotion_history."
+    }
+  ],
+  "sensitive_fields": [
+    "person_hash",
+    "salary_amount",
+    "payroll_token"
+  ],
+  "ambiguity_rules": [
+    "Ask for period, department, or manager scope when omitted."
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "database_type": "sqlserver",
+  "dialect": "tsql",
+  "notes": "Resolved real dialect metadata, no scaffold artifacts."
+}

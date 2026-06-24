@@ -1,0 +1,9 @@
+-- SQL Server schema template
+IF OBJECT_ID(N'dbo.{{TABLE_NAME}}', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.{{TABLE_NAME}} (
+        id BIGINT IDENTITY(1,1) PRIMARY KEY,
+        {{COLUMN_NAME}} NVARCHAR(255) NOT NULL,
+        created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+END;

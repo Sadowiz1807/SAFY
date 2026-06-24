@@ -1,0 +1,350 @@
+{
+  "schema_variant_id": "schema_01_small",
+  "domain": "social_content",
+  "table_count": 6,
+  "entities": [
+    {
+      "table": "users",
+      "description": "Synthetic social content users table.",
+      "columns": [
+        {
+          "name": "user_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for users."
+        },
+        {
+          "name": "user_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for users."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Lifecycle or moderation status."
+        },
+        {
+          "name": "handle_hash",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": true,
+          "description": "Hashed synthetic handle."
+        },
+        {
+          "name": "visibility",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic visibility setting."
+        }
+      ]
+    },
+    {
+      "table": "profiles",
+      "description": "Synthetic social content profiles table.",
+      "columns": [
+        {
+          "name": "profile_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for profiles."
+        },
+        {
+          "name": "profile_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for profiles."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Lifecycle or moderation status."
+        },
+        {
+          "name": "handle_hash",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": true,
+          "description": "Hashed synthetic handle."
+        },
+        {
+          "name": "visibility",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic visibility setting."
+        },
+        {
+          "name": "user_id",
+          "logical_type": "string",
+          "foreign_key": "users.user_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to users."
+        }
+      ]
+    },
+    {
+      "table": "posts",
+      "description": "Synthetic social content posts table.",
+      "columns": [
+        {
+          "name": "post_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for posts."
+        },
+        {
+          "name": "post_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for posts."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Lifecycle or moderation status."
+        },
+        {
+          "name": "content_score",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic engagement score."
+        },
+        {
+          "name": "profile_id",
+          "logical_type": "string",
+          "foreign_key": "profiles.profile_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to profiles."
+        }
+      ]
+    },
+    {
+      "table": "media_assets",
+      "description": "Synthetic social content media_assets table.",
+      "columns": [
+        {
+          "name": "media_asset_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for media_assets."
+        },
+        {
+          "name": "media_asset_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for media_assets."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Lifecycle or moderation status."
+        },
+        {
+          "name": "content_score",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic engagement score."
+        },
+        {
+          "name": "post_id",
+          "logical_type": "string",
+          "foreign_key": "posts.post_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to posts."
+        }
+      ]
+    },
+    {
+      "table": "comments",
+      "description": "Synthetic social content comments table.",
+      "columns": [
+        {
+          "name": "comment_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for comments."
+        },
+        {
+          "name": "comment_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for comments."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Lifecycle or moderation status."
+        },
+        {
+          "name": "content_score",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic engagement score."
+        },
+        {
+          "name": "media_asset_id",
+          "logical_type": "string",
+          "foreign_key": "media_assets.media_asset_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to media_assets."
+        }
+      ]
+    },
+    {
+      "table": "reactions",
+      "description": "Synthetic social content reactions table.",
+      "columns": [
+        {
+          "name": "reaction_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for reactions."
+        },
+        {
+          "name": "reaction_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for reactions."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Lifecycle or moderation status."
+        },
+        {
+          "name": "metric_value",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic metric value."
+        },
+        {
+          "name": "comment_id",
+          "logical_type": "string",
+          "foreign_key": "comments.comment_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to comments."
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "from_table": "profiles",
+      "from_column": "user_id",
+      "to_table": "users",
+      "to_column": "user_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "posts",
+      "from_column": "profile_id",
+      "to_table": "profiles",
+      "to_column": "profile_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "media_assets",
+      "from_column": "post_id",
+      "to_table": "posts",
+      "to_column": "post_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "comments",
+      "from_column": "media_asset_id",
+      "to_table": "media_assets",
+      "to_column": "media_asset_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "reactions",
+      "from_column": "comment_id",
+      "to_table": "comments",
+      "to_column": "comment_id",
+      "type": "many_to_one"
+    }
+  ]
+}

@@ -1,0 +1,101 @@
+{
+  "domain": "ecommerce",
+  "terms": [
+    {
+      "term": "customers",
+      "definition": "Synthetic ecommerce concept for customers."
+    },
+    {
+      "term": "addresses",
+      "definition": "Synthetic ecommerce concept for addresses."
+    },
+    {
+      "term": "products",
+      "definition": "Synthetic ecommerce concept for products."
+    },
+    {
+      "term": "categories",
+      "definition": "Synthetic ecommerce concept for categories."
+    },
+    {
+      "term": "product_categories",
+      "definition": "Synthetic ecommerce concept for product_categories."
+    },
+    {
+      "term": "inventory",
+      "definition": "Synthetic ecommerce concept for inventory."
+    },
+    {
+      "term": "warehouses",
+      "definition": "Synthetic ecommerce concept for warehouses."
+    },
+    {
+      "term": "orders",
+      "definition": "Synthetic ecommerce concept for orders."
+    },
+    {
+      "term": "order_items",
+      "definition": "Synthetic ecommerce concept for order_items."
+    },
+    {
+      "term": "payments",
+      "definition": "Synthetic ecommerce concept for payments."
+    },
+    {
+      "term": "shipments",
+      "definition": "Synthetic ecommerce concept for shipments."
+    },
+    {
+      "term": "returns",
+      "definition": "Synthetic ecommerce concept for returns."
+    },
+    {
+      "term": "refunds",
+      "definition": "Synthetic ecommerce concept for refunds."
+    },
+    {
+      "term": "promotions",
+      "definition": "Synthetic ecommerce concept for promotions."
+    },
+    {
+      "term": "campaigns",
+      "definition": "Synthetic ecommerce concept for campaigns."
+    },
+    {
+      "term": "reviews",
+      "definition": "Synthetic ecommerce concept for reviews."
+    },
+    {
+      "term": "suppliers",
+      "definition": "Synthetic ecommerce concept for suppliers."
+    },
+    {
+      "term": "carts",
+      "definition": "Synthetic ecommerce concept for carts."
+    },
+    {
+      "term": "cart_items",
+      "definition": "Synthetic ecommerce concept for cart_items."
+    },
+    {
+      "term": "wishlists",
+      "definition": "Synthetic ecommerce concept for wishlists."
+    },
+    {
+      "term": "tax_rates",
+      "definition": "Synthetic ecommerce concept for tax_rates."
+    },
+    {
+      "term": "loyalty_accounts",
+      "definition": "Synthetic ecommerce concept for loyalty_accounts."
+    }
+  ],
+  "sensitive_fields": [
+    "email_hash",
+    "address_line",
+    "phone_hash"
+  ],
+  "ambiguity_rules": [
+    "Ask for period, status, or entity when omitted."
+  ]
+}

@@ -1,0 +1,101 @@
+{
+  "domain": "crm_sales",
+  "terms": [
+    {
+      "term": "leads",
+      "definition": "Synthetic CRM sales concept for leads."
+    },
+    {
+      "term": "accounts",
+      "definition": "Synthetic CRM sales concept for accounts."
+    },
+    {
+      "term": "contacts",
+      "definition": "Synthetic CRM sales concept for contacts."
+    },
+    {
+      "term": "opportunities",
+      "definition": "Synthetic CRM sales concept for opportunities."
+    },
+    {
+      "term": "opportunity_stages",
+      "definition": "Synthetic CRM sales concept for opportunity_stages."
+    },
+    {
+      "term": "sales_representatives",
+      "definition": "Synthetic CRM sales concept for sales_representatives."
+    },
+    {
+      "term": "activities",
+      "definition": "Synthetic CRM sales concept for activities."
+    },
+    {
+      "term": "campaigns",
+      "definition": "Synthetic CRM sales concept for campaigns."
+    },
+    {
+      "term": "campaign_members",
+      "definition": "Synthetic CRM sales concept for campaign_members."
+    },
+    {
+      "term": "quotes",
+      "definition": "Synthetic CRM sales concept for quotes."
+    },
+    {
+      "term": "sales_orders",
+      "definition": "Synthetic CRM sales concept for sales_orders."
+    },
+    {
+      "term": "territories",
+      "definition": "Synthetic CRM sales concept for territories."
+    },
+    {
+      "term": "products",
+      "definition": "Synthetic CRM sales concept for products."
+    },
+    {
+      "term": "price_books",
+      "definition": "Synthetic CRM sales concept for price_books."
+    },
+    {
+      "term": "tasks",
+      "definition": "Synthetic CRM sales concept for tasks."
+    },
+    {
+      "term": "meetings",
+      "definition": "Synthetic CRM sales concept for meetings."
+    },
+    {
+      "term": "notes",
+      "definition": "Synthetic CRM sales concept for notes."
+    },
+    {
+      "term": "forecast_snapshots",
+      "definition": "Synthetic CRM sales concept for forecast_snapshots."
+    },
+    {
+      "term": "competitors",
+      "definition": "Synthetic CRM sales concept for competitors."
+    },
+    {
+      "term": "contracts",
+      "definition": "Synthetic CRM sales concept for contracts."
+    },
+    {
+      "term": "renewals",
+      "definition": "Synthetic CRM sales concept for renewals."
+    },
+    {
+      "term": "lead_sources",
+      "definition": "Synthetic CRM sales concept for lead_sources."
+    }
+  ],
+  "sensitive_fields": [
+    "contact_hash",
+    "account_private_note",
+    "sales_rep_contact_hash"
+  ],
+  "ambiguity_rules": [
+    "Ask for period, territory, or pipeline stage when omitted."
+  ]
+}

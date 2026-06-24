@@ -1,0 +1,28 @@
+{
+  "domain": "education",
+  "seed": 20260623,
+  "canonical_count": 2000,
+  "database_record_count": 12000,
+  "batches_completed": 10,
+  "batch_size": 200,
+  "canonical_sha256": "e8f4836c169fe14aab77d93868ab6e49be0e044a05ad2473c8cd649c257cb36e",
+  "task_group_counts": {
+    "safety_negative": 200,
+    "write": 300,
+    "read_only": 900,
+    "query_repair": 100,
+    "clarification_ambiguous": 100,
+    "ddl": 200,
+    "multi_turn_followup": 200
+  },
+  "language_counts": {
+    "vi": 1600,
+    "en": 400
+  },
+  "difficulty_counts": {
+    "easy": 400,
+    "medium": 800,
+    "hard": 500,
+    "expert": 300
+  }
+}

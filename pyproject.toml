@@ -13,22 +13,25 @@ dependencies = [
 [project.scripts]
 safy = "Apps.Api.safy_api.cli:main"
 
-[tool.setuptools]
-packages = [
-    "Apps",
-    "Core",
-    "Audit",
-    "State",
-    "Tools",
-    "Skills",
-    "Configs",
-    "Gateway",
-    "Logging",
-    "Sandbox",
-    "Toolsets",
-    "DataStore",
-    "Providers",
+[tool.setuptools.packages.find]
+where = ["."]
+include = [
+    "Agent*",
+    "Apps*",
+    "Audit*",
+    "Core*",
+    "DataStore*",
+    "Gateway*",
+    "LLM*",
+    "Logging*",
+    "Providers*",
+    "Sandbox*",
+    "State*",
+    "Tools*",
+    "Toolsets*",
 ]
+exclude = ["Tests*", "Docs*", "Scripts*"]
+namespaces = true
 
 [build-system]
 requires = ["setuptools>=61.0"]

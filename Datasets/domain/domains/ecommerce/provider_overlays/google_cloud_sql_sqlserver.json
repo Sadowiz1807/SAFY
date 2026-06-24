@@ -1,0 +1,8 @@
+{
+  "provider": "google_cloud_sql",
+  "database_type": "sqlserver",
+  "engine": "sqlserver",
+  "dialect": "tsql",
+  "template_only": true,
+  "contains_secret": false
+}

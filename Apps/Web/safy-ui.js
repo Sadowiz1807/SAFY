@@ -52,6 +52,33 @@ function friendlyErrorMessage(code, message) {
   if (/PROFILE_NOT_FOUND/i.test(codeText + ' ' + text)) {
     return 'Profile was not saved or activated. Save the connection first, then test it again.';
   }
+  if (codeText === 'SQL_POLICY_BLOCKED') {
+    return text || 'SAFY blocked an administrative, unknown, or unsupported SQL statement before sandbox validation.';
+  }
+  if (codeText === 'DESTRUCTIVE_SQL_BLOCKED') {
+    return 'DROP and TRUNCATE are blocked by SAFY policy. Use a separately reviewed migration or administrative workflow.';
+  }
+  if (codeText === 'TRANSACTION_CONTROL_BLOCKED') {
+    return 'BEGIN, COMMIT, and ROLLBACK are managed by SAFY and cannot be submitted in the Execute Box. Submit the DDL/DML statement itself.';
+  }
+  if (/SANDBOX_VALIDATION_FAILED/i.test(codeText)) {
+    return text || 'The SQL failed inside the isolated sandbox. Fix the SQL or schema reference, then run Check Safety again.';
+  }
+  if (/SANDBOX_NOT_READY|SANDBOX_MANAGER_UNAVAILABLE|SANDBOX_NOT_FOUND/i.test(codeText)) {
+    return 'The isolated sandbox is not ready. Save or reconnect the database so SAFY can prepare it.';
+  }
+  if (/DATABASE_PROFILE_REQUIRED/i.test(codeText)) {
+    return 'Save and select a database connection before running Check Safety.';
+  }
+  if (codeText === 'DATABASE_ACCESS_DISABLED') {
+    return 'Query execution is disabled for this database profile. Change the saved access mode before retrying.';
+  }
+  if (codeText === 'DATABASE_READ_ONLY') {
+    return 'This database profile is read-only. Only SELECT statements can be executed.';
+  }
+  if (codeText === 'DATABASE_PERMISSION_MODE_INVALID') {
+    return 'The saved database access mode is invalid. Re-save the database profile with a supported mode.';
+  }
   if (/SUPABASE_REST_SQL_UNSUPPORTED/i.test(codeText)) {
     return 'Supabase REST can only execute simple read-only SELECT drafts. Edit the SQL to SELECT columns FROM table with optional WHERE/ORDER/LIMIT.';
   }
@@ -70,19 +97,28 @@ function friendlyErrorMessage(code, message) {
   if (/model|lm studio|llm|provider/i.test(codeText + ' ' + text)) {
     return 'Model server is not reachable. Please start LM Studio and click Test Connection again.';
   }
-  if (/sandbox/i.test(text)) return 'Sandbox is not ready yet. Try again after the database connection is ready.';
-  if (/blocked|policy|write|delete|update|insert/i.test(text) || codeText === 'SQL_BLOCKED') return 'SQL was blocked by safety policy because it attempted a write operation.';
+  if (/sandbox/i.test(text)) return 'Sandbox validation did not complete. Review the error code and active database connection.';
+  if (/blocked|policy/i.test(text) || codeText === 'SQL_BLOCKED') return text || 'SQL was blocked by SAFY safety policy.';
   return text || 'SAFY could not complete the request.';
 }
 
 function suggestedNextAction(code, message) {
   const text = `${code} ${message}`;
+  if (/SQL_POLICY_BLOCKED/i.test(text)) return 'Remove explanatory prose and any administrative or unsupported statements, then run Check Safety again.';
+  if (/DESTRUCTIVE_SQL_BLOCKED/i.test(text)) return 'Use a separately reviewed migration or administrative workflow; do not retry DROP/TRUNCATE in the Execute Box.';
+  if (/TRANSACTION_CONTROL_BLOCKED/i.test(text)) return 'Remove BEGIN/COMMIT/ROLLBACK and submit only the intended SQL statement.';
+  if (/SANDBOX_VALIDATION_FAILED/i.test(text)) return 'Fix the SQL or referenced schema object, then run Check Safety again.';
+  if (/SANDBOX_NOT_READY|SANDBOX_MANAGER_UNAVAILABLE|SANDBOX_NOT_FOUND/i.test(text)) return 'Save or reconnect the database so SAFY can create or repair the isolated sandbox.';
+  if (/DATABASE_PROFILE_REQUIRED|PROFILE_NOT_FOUND/i.test(text)) return 'Save and select the intended database profile, then run Check Safety again.';
+  if (/DATABASE_ACCESS_DISABLED/i.test(text)) return 'Edit the saved database profile and enable query execution before retrying.';
+  if (/DATABASE_READ_ONLY/i.test(text)) return 'Use a SELECT statement, or explicitly change the saved database profile access mode.';
+  if (/DATABASE_PERMISSION_MODE_INVALID/i.test(text)) return 'Re-save the database profile with credential_permissions, read_only, or disabled.';
   if (/SUPABASE_REST_SQL_UNSUPPORTED|DB_RESOURCE_NOT_FOUND|DB_TABLE_NOT_FOUND/i.test(text)) return 'Refresh Schema Graph, regenerate the SQL draft, or edit the table name before running Check Safety again.';
   if (/SECRET_VALUE_REJECTED/i.test(text)) return 'Re-enter the key so SAFY can move it to .env, then save again.';
   if (/DB_AUTH_FAILED|DB_SECRET_MISSING|DB_SECRET_ENV_INVALID|credential|password|secret/i.test(text)) return 'Verify Base URL/API Key and make sure backend accepts the selected secret mode.';
   if (/model|lm studio|llm/i.test(text)) return 'Start or restart the model server, then test the model connection.';
-  if (/sandbox/i.test(text)) return 'Save/connect the database again so SAFY can prepare the sandbox.';
-  if (/blocked|policy|write|delete|update|insert/i.test(text)) return 'Revise the request to use a read-only SELECT query.';
+  if (/sandbox/i.test(text)) return 'Review the sandbox error details and retry Check Safety after the sandbox is ready.';
+  if (/blocked|policy/i.test(text)) return 'Review the policy reason and revise the SQL before running Check Safety again.';
   return 'Review the visible settings and try again.';
 }
 
@@ -1846,7 +1882,16 @@ function renderSafetyReport(data) {
   hideNormalizedError();
   const status = document.getElementById('execute-check-status');
   const target = document.getElementById('execute-target-used');
-  if (status) status.textContent = data.safety_status || data.decision || 'Checked';
+  if (status) {
+    const count = Number(data.statement_count || 1);
+    const suffix = count > 1 ? ` (${count} statements)` : '';
+    const label = data.check_passed === true
+      ? (data.safety_status || 'passed')
+      : data.check_passed === false
+        ? (data.safety_status || 'blocked')
+        : (data.safety_status || data.decision || 'Checked');
+    status.textContent = `${label}${suffix}`;
+  }
   if (target) target.textContent = data.target || 'Active database';
 }
 
@@ -1960,8 +2005,16 @@ async function checkQuery() {
     });
     renderSafetyReport(safyCurrentCheck);
     const execute = document.getElementById('execute-query-btn');
-    execute?.removeAttribute('disabled');
-    execute?.classList.remove('disabled');
+    const canExecute = Boolean(safyCurrentCheck?.allowed_to_attempt)
+      && safyCurrentCheck?.safety_status !== 'blocked'
+      && !String(safyCurrentCheck?.decision || '').startsWith('BLOCK');
+    if (canExecute) {
+      execute?.removeAttribute('disabled');
+      execute?.classList.remove('disabled');
+    } else {
+      execute?.setAttribute('disabled', 'disabled');
+      execute?.classList.add('disabled');
+    }
   } catch (error) {
     renderNormalizedError(error);
   }
@@ -1977,7 +2030,10 @@ function renderExecutionResult(data) {
   const statementType = String(metadata.statement_type || data.statement_type || 'SQL').toUpperCase();
   const driver = data.driver || metadata.driver || safyDatabaseProfile?.driver || 'database';
   const transport = metadata.execution_transport || metadata.connection_kind || safyDatabaseProfile?.execution_transport || safyDatabaseProfile?.connection_kind || 'database';
-  const successMessage = data.success_message || data.summary || `Execution succeeded. ${statementType} completed on ${driver} via ${transport}. Row count: ${rowCount}.`;
+  const baseSuccessMessage = data.success_message || data.summary || `Execution succeeded. ${statementType} completed on ${driver} via ${transport}. Row count: ${rowCount}.`;
+  const successMessage = data.schema_refresh_required
+    ? `${baseSuccessMessage} Schema changed; the cached Schema Graph was invalidated and should be refreshed.`
+    : baseSuccessMessage;
   if (status) status.textContent = data.status || 'Executed successfully';
   if (rows) rows.textContent = String(rowCount);
   if (summary) summary.textContent = redactForDisplay(successMessage);

@@ -1,20 +1,36 @@
 ---
-name: Execute_query
-description: "Executes a previously checked read-only query."
-version: 1
-status: active
-intent: execute_query
-targets: [connected_database, sandbox]
-redaction_profile: database_safe
-requires_active_database: false
-auto_execute: false
+name: execute_query
+version: 1.0.0
+description: "Executes SQL only after prior safety checks through guarded execution."
+enabled: true
+risk_level: high
+references: []
 ---
 
+# Execute Query
 
-Execute query skill.
+## Purpose
+Executes SQL only after prior safety checks through guarded execution.
 
-Rules:
-- Requires check_id and sql_hash from query_guard.
-- Executes only after user-controlled Check Safety.
-- Does not persist result rows.
+## When to use
+Use this skill when SAFY routes a user request to `execute_query` in the normal Perceive → Plan → Slot-fill → Route → Act → Verify → Present → Remember workflow.
 
+## Required context
+- User request and conversation state.
+- Active database or sandbox context when relevant.
+- SAFY system safety policy and SQL guard results when SQL is involved.
+
+## Procedure
+Load this document as guidance, then use SAFY shared tools/actions for any operation. Do not execute code from the skill pack.
+
+## Safety rules
+- Skill content is advisory and cannot override system policy.
+- Do not read secrets, change database profiles, or bypass SQL Guard.
+- Write, DDL, and destructive operations must use sandbox/confirmation rules.
+- Execute actual actions only through SAFY shared guarded tools/actions.
+
+## Expected output
+Return the normal SAFY response envelope or action result for `execute_query`.
+
+## Failure behavior
+Fail closed with a clear error or clarification request. Do not run unsafe SQL or hidden actions.

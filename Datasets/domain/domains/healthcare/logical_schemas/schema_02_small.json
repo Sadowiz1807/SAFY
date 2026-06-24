@@ -1,0 +1,429 @@
+{
+  "schema_variant_id": "schema_02_small",
+  "domain": "healthcare",
+  "table_count": 8,
+  "entities": [
+    {
+      "table": "patients",
+      "description": "Synthetic healthcare patients table.",
+      "columns": [
+        {
+          "name": "patient_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for patients."
+        },
+        {
+          "name": "patient_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for patients."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Care workflow status."
+        },
+        {
+          "name": "patient_hash",
+          "logical_type": "string",
+          "nullable": true,
+          "sensitive": true,
+          "description": "Hashed synthetic patient marker."
+        },
+        {
+          "name": "care_segment",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic care segment."
+        }
+      ]
+    },
+    {
+      "table": "doctors",
+      "description": "Synthetic healthcare doctors table.",
+      "columns": [
+        {
+          "name": "doctor_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for doctors."
+        },
+        {
+          "name": "doctor_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for doctors."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Care workflow status."
+        },
+        {
+          "name": "patient_id",
+          "logical_type": "string",
+          "foreign_key": "patients.patient_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to patients."
+        }
+      ]
+    },
+    {
+      "table": "departments",
+      "description": "Synthetic healthcare departments table.",
+      "columns": [
+        {
+          "name": "department_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for departments."
+        },
+        {
+          "name": "department_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for departments."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Care workflow status."
+        },
+        {
+          "name": "doctor_id",
+          "logical_type": "string",
+          "foreign_key": "doctors.doctor_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to doctors."
+        }
+      ]
+    },
+    {
+      "table": "appointments",
+      "description": "Synthetic healthcare appointments table.",
+      "columns": [
+        {
+          "name": "appointment_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for appointments."
+        },
+        {
+          "name": "appointment_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for appointments."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Care workflow status."
+        },
+        {
+          "name": "metric_value",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic operational metric."
+        },
+        {
+          "name": "department_id",
+          "logical_type": "string",
+          "foreign_key": "departments.department_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to departments."
+        }
+      ]
+    },
+    {
+      "table": "visits",
+      "description": "Synthetic healthcare visits table.",
+      "columns": [
+        {
+          "name": "visit_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for visits."
+        },
+        {
+          "name": "visit_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for visits."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Care workflow status."
+        },
+        {
+          "name": "metric_value",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic operational metric."
+        },
+        {
+          "name": "appointment_id",
+          "logical_type": "string",
+          "foreign_key": "appointments.appointment_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to appointments."
+        }
+      ]
+    },
+    {
+      "table": "diagnoses",
+      "description": "Synthetic healthcare diagnoses table.",
+      "columns": [
+        {
+          "name": "diagnose_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for diagnoses."
+        },
+        {
+          "name": "diagnose_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for diagnoses."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Care workflow status."
+        },
+        {
+          "name": "visit_id",
+          "logical_type": "string",
+          "foreign_key": "visits.visit_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to visits."
+        }
+      ]
+    },
+    {
+      "table": "procedures",
+      "description": "Synthetic healthcare procedures table.",
+      "columns": [
+        {
+          "name": "procedure_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for procedures."
+        },
+        {
+          "name": "procedure_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for procedures."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Care workflow status."
+        },
+        {
+          "name": "amount",
+          "logical_type": "decimal",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic billing or service amount."
+        },
+        {
+          "name": "diagnose_id",
+          "logical_type": "string",
+          "foreign_key": "diagnoses.diagnose_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to diagnoses."
+        }
+      ]
+    },
+    {
+      "table": "prescriptions",
+      "description": "Synthetic healthcare prescriptions table.",
+      "columns": [
+        {
+          "name": "prescription_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for prescriptions."
+        },
+        {
+          "name": "prescription_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for prescriptions."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Care workflow status."
+        },
+        {
+          "name": "procedure_id",
+          "logical_type": "string",
+          "foreign_key": "procedures.procedure_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to procedures."
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "from_table": "doctors",
+      "from_column": "patient_id",
+      "to_table": "patients",
+      "to_column": "patient_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "departments",
+      "from_column": "doctor_id",
+      "to_table": "doctors",
+      "to_column": "doctor_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "appointments",
+      "from_column": "department_id",
+      "to_table": "departments",
+      "to_column": "department_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "visits",
+      "from_column": "appointment_id",
+      "to_table": "appointments",
+      "to_column": "appointment_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "diagnoses",
+      "from_column": "visit_id",
+      "to_table": "visits",
+      "to_column": "visit_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "procedures",
+      "from_column": "diagnose_id",
+      "to_table": "diagnoses",
+      "to_column": "diagnose_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "prescriptions",
+      "from_column": "procedure_id",
+      "to_table": "procedures",
+      "to_column": "procedure_id",
+      "type": "many_to_one"
+    }
+  ]
+}

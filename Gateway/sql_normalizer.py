@@ -13,6 +13,25 @@ class NormalizedSQL:
     is_multi_statement: bool
 
 
+_SQL_FENCE_RE = re.compile(
+    r"^\s*```(?:sql|postgresql|postgres|mysql|sqlite|tsql|plsql)?[ \t]*\r?\n?(?P<body>[\s\S]*?)\r?\n?```\s*$",
+    re.IGNORECASE,
+)
+
+
+def sanitize_sql_input(sql: str | None) -> str:
+    """Return a safe SQL candidate without weakening fail-closed parsing.
+
+    SAFY accepts a single Markdown SQL code block because model providers often
+    return SQL in that format. Prose around a fence, multiple fences, and other
+    mixed content are intentionally left untouched so the classifier can reject
+    them as UNKNOWN/MULTI_STATEMENT instead of extracting executable text.
+    """
+    text = "" if sql is None else str(sql)
+    match = _SQL_FENCE_RE.fullmatch(text)
+    return match.group("body").strip() if match else text.strip()
+
+
 def strip_comments(sql: str) -> str:
     # Keeps string literals intact while removing line/block comments.
     out: list[str] = []
@@ -84,13 +103,13 @@ def split_statements(sql: str) -> list[str]:
 
 
 def normalize_sql(sql: str) -> NormalizedSQL:
-    if sql is None:
-        sql = ""
-    stripped = strip_comments(sql)
+    original_sql = "" if sql is None else str(sql)
+    candidate = sanitize_sql_input(original_sql)
+    stripped = strip_comments(candidate)
     statements = [re.sub(r"\s+", " ", s).strip() for s in split_statements(stripped)]
     normalized = "; ".join(statements)
     return NormalizedSQL(
-        original_sql=sql,
+        original_sql=original_sql,
         sql_without_comments=stripped,
         normalized_sql=normalized,
         statements=statements,

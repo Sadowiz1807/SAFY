@@ -1,14 +1,42 @@
 ---
-name: Create_database
-version: agent_runtime-create-database-v1
+name: create_database
+version: 1.0.0
+description: "Guides sandbox-only database schema creation through shared tools."
+enabled: true
+risk_level: high
+references: []
 policy:
   allowed_intents: [create_database]
   allowed_targets: [sandbox]
   allowed_toolsets: [sandbox, database, sql]
-  allowed_tools: [sandbox.create_workspace, sandbox.execute_sql, sandbox.inspect_workspace, sandbox.cleanup_workspace, database.read_schema, sql.validate, sql.sanitize_identifier]
-  denied_tools: [connected_database.execute, connected_database.read, provider.network]
+  allowed_tools:
+    - sandbox.create_workspace
+    - sandbox.execute_sql
+    - sandbox.inspect_workspace
+    - sandbox.cleanup_workspace
+    - database.read_schema
+    - sql.validate
+    - sql.sanitize_identifier
+  denied_tools:
+    - connected_database.execute
+    - connected_database.read
+    - provider.network
   allowed_statement_classes: [CREATE]
-  blocked_statement_classes: [DROP, ALTER, TRUNCATE, RENAME, INSERT, UPDATE, DELETE, MERGE, GRANT, REVOKE, ADMIN_SECURITY, CROSS_DATABASE_OR_SERVER_LEVEL, UNKNOWN, MULTI_STATEMENT]
+  blocked_statement_classes:
+    - DROP
+    - ALTER
+    - TRUNCATE
+    - RENAME
+    - INSERT
+    - UPDATE
+    - DELETE
+    - MERGE
+    - GRANT
+    - REVOKE
+    - ADMIN_SECURITY
+    - CROSS_DATABASE_OR_SERVER_LEVEL
+    - UNKNOWN
+    - MULTI_STATEMENT
   sandbox_only: true
   sql_guard_required: true
   audit_required: true
@@ -18,25 +46,30 @@ policy:
   confirmation_behavior: no_user_confirmation_for_sandbox_create
 ---
 
-# Create_database Skill
+# Create Database
 
-## purpose
-Create a database schema in a Safy sandbox workspace only.
+## Purpose
+Guides sandbox-only database schema creation through shared tools.
 
-## when to use
-Use for user requests that ask Safy to create, design, initialize, or generate a database/schema.
+## When to use
+Use this skill when SAFY routes a user request to `create_database` in the normal Perceive → Plan → Slot-fill → Route → Act → Verify → Present → Remember workflow.
 
-## toolsets
-`sandbox`, `database`, and `sql`.
+## Required context
+- User request and conversation state.
+- Active database or sandbox context when relevant.
+- SAFY system safety policy and SQL guard results when SQL is involved.
 
-## workflow
-Detect intent, resolve domain, compile SkillPolicy, build minimized provider prompt, validate provider output, validate every SQL statement with SQL Guard, execute only in sandbox, read schema back, audit, and return Safy envelope data.
+## Procedure
+Load this document as guidance, then use SAFY shared tools/actions for any operation. Do not execute code from the skill pack.
 
-## allowed actions
-Create sandbox workspace, validate SQL, execute validated sandbox DDL, read sandbox schema, summarize result.
+## Safety rules
+- Skill content is advisory and cannot override system policy.
+- Do not read secrets, change database profiles, or bypass SQL Guard.
+- Write, DDL, and destructive operations must use sandbox/confirmation rules.
+- Execute actual actions only through SAFY shared guarded tools/actions.
 
-## forbidden actions
-Connected database execution, connected database read-only query, direct provider execution, bypassing ToolExecutor, bypassing SQL Guard, raw secret handling, admin/server-level SQL.
+## Expected output
+Return the normal SAFY response envelope or action result for `create_database`.
 
-## output format
-Return `chat_id`, `workflow_id`, `intent`, `assumptions`, `execution_target`, `workspace_id`, `status`, `schema_summary`, `created_objects`, `technical_result`, `warnings`, and `next_questions` inside Safy envelope `data`.
+## Failure behavior
+Fail closed with a clear error or clarification request. Do not run unsafe SQL or hidden actions.

@@ -1,9 +1,10 @@
 from __future__ import annotations
 from typing import Any
 import time
-from .base import DEFAULT_ROW_LIMIT, SecretContext, query_result, resolve_secret, success_envelope, is_sensitive_name, user_execution_result
+from .base import bounded_row_limit, DEFAULT_ROW_LIMIT, SecretContext, query_result, resolve_secret, success_envelope, is_sensitive_name, user_execution_result
 from .errors import DriverError
 from Gateway.sql_classifier import classify_sql
+from Gateway.sql_normalizer import normalize_sql
 
 class PostgresDriver:
     driver = "postgresql"
@@ -43,21 +44,53 @@ class PostgresDriver:
             return success_envelope(self.driver, profile, {"database": profile.get("database"), "schemas": sorted({t['schema'] for t in tables}), "tables": tables, "sample_rows_included": False})
         finally: conn.close()
     def execute_readonly(self, sql: str, profile: dict[str, Any], secret_context: SecretContext | None = None, options: dict[str, Any] | None = None) -> dict[str, Any]:
-        row_limit=int((options or {}).get("row_limit") or DEFAULT_ROW_LIMIT); conn=self._connect(profile, secret_context); started=time.perf_counter()
+        row_limit=bounded_row_limit((options or {}).get("row_limit"), DEFAULT_ROW_LIMIT); conn=self._connect(profile, secret_context); started=time.perf_counter()
         try:
             cur=conn.execute(sql)
             return query_result(self.driver, profile, cur, started, row_limit)
         finally: conn.close()
 
     def execute_user_sql(self, sql: str, profile: dict[str, Any], secret_context: SecretContext | None = None, options: dict[str, Any] | None = None) -> dict[str, Any]:
-        row_limit=int((options or {}).get("row_limit") or DEFAULT_ROW_LIMIT)
-        classification = classify_sql(sql)
+        row_limit=bounded_row_limit((options or {}).get("row_limit"), DEFAULT_ROW_LIMIT)
+        normalized = normalize_sql(sql)
+        statements = normalized.statements
+        if not statements:
+            raise DriverError("DB_EXECUTION_FAILED", "SQL is empty.")
+        classification = classify_sql(statements[0]) if len(statements) == 1 else None
         conn=self._connect(profile, secret_context, read_only=False)
         started=time.perf_counter()
         try:
-            cur=conn.execute(sql)
-            if cur.description:
-                return query_result(self.driver, profile, cur, started, row_limit)
-            return user_execution_result(self.driver, profile, started, row_count=getattr(cur, "rowcount", 0), statement_type=classification.statement_type)
+            conn.autocommit=False
+            if len(statements) == 1:
+                cur=conn.execute(statements[0])
+                if cur.description:
+                    payload = query_result(self.driver, profile, cur, started, row_limit)
+                    conn.commit()
+                    return payload
+                row_count = getattr(cur, "rowcount", 0)
+                conn.commit()
+                return user_execution_result(self.driver, profile, started, row_count=row_count, statement_type=classification.statement_type if classification else "SQL")
+
+            total_row_count = 0
+            with conn.cursor() as cur:
+                for statement in statements:
+                    cur.execute(statement)
+                    row_count = getattr(cur, "rowcount", 0)
+                    if isinstance(row_count, int) and row_count > 0:
+                        total_row_count += row_count
+            conn.commit()
+            payload = user_execution_result(self.driver, profile, started, row_count=total_row_count, statement_type="BATCH")
+            payload["metadata"].update({"statement_count": len(statements), "transactional_batch": True})
+            return payload
+        except DriverError:
+            conn.rollback()
+            raise
+        except Exception as exc:
+            conn.rollback()
+            raise DriverError(
+                "DB_EXECUTION_FAILED",
+                str(exc),
+                {"driver": self.driver, "statement_count": len(statements)},
+            ) from exc
         finally:
             conn.close()

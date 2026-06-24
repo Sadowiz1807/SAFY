@@ -1,0 +1,28 @@
+{
+  "domain": "ecommerce",
+  "seed": 20260622,
+  "canonical_count": 2000,
+  "database_record_count": 12000,
+  "batches_completed": 10,
+  "batch_size": 200,
+  "canonical_sha256": "6d858afe091afe4e08ae0c2a5bce121d40918fbf1e9dfae5afcf071e4ef5da3f",
+  "task_group_counts": {
+    "safety_negative": 200,
+    "write": 300,
+    "clarification_ambiguous": 100,
+    "read_only": 900,
+    "multi_turn_followup": 200,
+    "ddl": 200,
+    "query_repair": 100
+  },
+  "language_counts": {
+    "vi": 1600,
+    "en": 400
+  },
+  "difficulty_counts": {
+    "easy": 400,
+    "medium": 800,
+    "hard": 500,
+    "expert": 300
+  }
+}

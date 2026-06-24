@@ -1,0 +1,25 @@
+{
+  "task_groups": {
+    "read_only": 900,
+    "write": 300,
+    "ddl": 200,
+    "multi_turn_followup": 200,
+    "clarification_ambiguous": 100,
+    "query_repair": 100,
+    "safety_negative": 200
+  },
+  "scenarios": [
+    "course_enrollment",
+    "student_performance",
+    "attendance",
+    "grade_distribution",
+    "assignment_completion",
+    "teacher_workload",
+    "course_prerequisites",
+    "class_scheduling",
+    "at_risk_students",
+    "semester_comparison",
+    "capacity_utilization",
+    "protected_student_data"
+  ]
+}

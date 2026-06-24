@@ -11,11 +11,41 @@ SECRET_PATTERNS = [
     re.compile(r"(?<![A-Za-z0-9_])(sk-[A-Za-z0-9_\-]{3})[A-Za-z0-9_\-]*"),
 ]
 
+SQL_LEADING_RE = re.compile(
+    r"^\s*(?:/\*.*?\*/\s*)*(?:SELECT|WITH|INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|GRANT|REVOKE|BEGIN|COMMIT|ROLLBACK|SET)\b",
+    re.I | re.S,
+)
+SENSITIVE_SQL_IDENTIFIER_RE = re.compile(
+    r"\b(?:password|passwd|api[_-]?key|apikey|token|secret|credential|private[_-]?key|access[_-]?key)\b",
+    re.I,
+)
+SQL_SINGLE_QUOTED_LITERAL_RE = re.compile(r"(?:E|U&)?'(?:''|[^'])*'", re.I)
+SQL_DOLLAR_QUOTED_LITERAL_RE = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)?\$.*?\$\1\$", re.S)
+SQL_SENSITIVE_NUMERIC_ASSIGNMENT_RE = re.compile(
+    r"(\b(?:password|passwd|api[_-]?key|apikey|token|secret|credential|private[_-]?key|access[_-]?key)\b\s*=\s*)([-+]?\d+(?:\.\d+)?)",
+    re.I,
+)
+
+
+def redact_sql_sensitive_literals(value: str) -> str:
+    """Redact SQL literals when a statement references credential-like fields.
+
+    Non-sensitive SQL remains intact so session draft restoration continues to
+    work. For sensitive statements, all string literals are removed because a
+    neighboring WHERE/value literal can also disclose an identifier or secret.
+    """
+    text = str(value)
+    if not SQL_LEADING_RE.search(text) or not SENSITIVE_SQL_IDENTIFIER_RE.search(text):
+        return text
+    text = SQL_DOLLAR_QUOTED_LITERAL_RE.sub("'[REDACTED]'", text)
+    text = SQL_SINGLE_QUOTED_LITERAL_RE.sub("'[REDACTED]'", text)
+    return SQL_SENSITIVE_NUMERIC_ASSIGNMENT_RE.sub(r"\1[REDACTED]", text)
+
 
 def redact_text(value: str | None) -> str | None:
     if value is None:
         return None
-    redacted = str(value)
+    redacted = redact_sql_sensitive_literals(str(value))
     for pattern in SECRET_PATTERNS:
         if pattern.groups >= 3:
             redacted = pattern.sub(r"\1[REDACTED]\3", redacted)

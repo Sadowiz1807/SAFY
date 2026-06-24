@@ -1,0 +1,25 @@
+{
+  "task_groups": {
+    "read_only": 900,
+    "write": 300,
+    "ddl": 200,
+    "multi_turn_followup": 200,
+    "clarification_ambiguous": 100,
+    "query_repair": 100,
+    "safety_negative": 200
+  },
+  "scenarios": [
+    "headcount",
+    "attendance_trends",
+    "leave_balances",
+    "overtime",
+    "employee_turnover",
+    "performance_distribution",
+    "training_completion",
+    "position_vacancies",
+    "payroll_summaries",
+    "salary_data_protection",
+    "manager_span",
+    "contract_expiration"
+  ]
+}

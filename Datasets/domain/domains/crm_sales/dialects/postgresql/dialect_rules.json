@@ -1,0 +1,5 @@
+{
+  "database_type": "postgresql",
+  "dialect": "postgres",
+  "notes": "Resolved real dialect metadata, no scaffold artifacts."
+}

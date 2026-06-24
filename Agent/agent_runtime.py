@@ -17,15 +17,17 @@ from Core.workflow_review import WorkflowReviewCoordinator
 from LLM.provider_health import adapter_for
 from .schema_context import summarize_schema
 from DataStore.schema_graph_store import summarize_schema_graph
-from Skills.Command_router.runtime import CommandRouterSkill
-from Skills.Database_context.runtime import DatabaseContextSkill
-from Skills.Schema_graph.runtime import SchemaGraphSkill
-from Skills.Text_to_query.runtime import TextToQuerySkill
-from Skills.Query_guard.runtime import QueryGuardSkill
-from Skills.Execute_box.runtime import ExecuteBoxSkill
-from Skills.Execute_query.runtime import ExecuteQuerySkill
-from Skills.Query_explain.runtime import QueryExplainSkill
-from Skills.Query_repair.runtime import QueryRepairSkill
+from Core.skill_actions import (
+    CommandRouterSkill,
+    DatabaseContextSkill,
+    SchemaGraphSkill,
+    TextToSqlSkill,
+    QueryGuardSkill,
+    ExecuteBoxSkill,
+    ExecuteQuerySkill,
+    QueryExplainSkill,
+    QueryRepairSkill,
+)
 
 DEFAULT_SYSTEM_PROMPT = """You are Safy, an AI Database Agent.
 Be concise, practical, and safety-first.
@@ -63,7 +65,7 @@ class AgentRuntime:
             sandbox_manager=self.sandbox_manager,
         )
         self.schema_graph_skill = SchemaGraphSkill(schema_graph_loader=self.schema_graph_loader)
-        self.text_to_query_skill = TextToQuerySkill(self.provider_store, self._system_prompt)
+        self.text_to_sql_skill = TextToSqlSkill(self.provider_store, self._system_prompt)
         self.query_guard_skill = QueryGuardSkill(self.query_orchestrator)
         self.execute_box_skill = ExecuteBoxSkill()
         self.execute_query_skill = ExecuteQuerySkill(self.query_orchestrator)
@@ -74,19 +76,50 @@ class AgentRuntime:
         self._memory_states: dict[str, dict[str, Any]] = {}
         self.skill_registry = SkillRegistry()
         self.tool_registry = ToolRegistry()
-        self._register_runtime_skills()
+        self._attach_shared_skill_actions()
         self._register_runtime_tools()
 
-    def _register_runtime_skills(self) -> None:
-        self.skill_registry.register("command_router", self.command_router_skill, description="Parse explicit commands and database intents.", actions=["parse"])
-        self.skill_registry.register("database_context", self.database_context_skill, description="Resolve target database/sandbox context.", actions=["resolve"])
-        self.skill_registry.register("schema_graph", self.schema_graph_skill, description="Load and summarize schema graphs.", actions=["load", "summarize", "select_relevant_subset"])
-        self.skill_registry.register("text_to_query", self.text_to_query_skill, description="Draft SQL from natural language and context packs.", actions=["generate_sql_draft"])
-        self.skill_registry.register("query_guard", self.query_guard_skill, description="Run SQL safety validation.", actions=["check"])
-        self.skill_registry.register("execute_box", self.execute_box_skill, description="Prepare reviewable SQL drafts for the UI execute box.", actions=["set_draft"])
-        self.skill_registry.register("execute_query", self.execute_query_skill, description="Execute SQL that has passed safety checks.", actions=["execute_checked"])
-        self.skill_registry.register("query_explain", self.query_explain_skill, description="Explain SQL drafts and touched tables.", actions=["explain"])
-        self.skill_registry.register("query_repair", self.query_repair_skill, description="Apply conservative SQL repair hints.", actions=["repair_basic"])
+    def _attach_shared_skill_actions(self) -> None:
+        self.skill_registry.attach_actions(
+            "command_router",
+            {"parse": self.command_router_skill.parse},
+        )
+        self.skill_registry.attach_actions(
+            "database_context",
+            {"resolve": self.database_context_skill.resolve},
+        )
+        self.skill_registry.attach_actions(
+            "schema_graph",
+            {
+                "load": self.schema_graph_skill.load,
+                "summarize": self.schema_graph_skill.summarize,
+                "select_relevant_subset": self.schema_graph_skill.select_relevant_subset,
+            },
+        )
+        self.skill_registry.attach_actions(
+            "text_to_sql",
+            {"generate_sql_draft": self.text_to_sql_skill.generate_sql_draft},
+        )
+        self.skill_registry.attach_actions(
+            "query_guard",
+            {"check": self.query_guard_skill.check},
+        )
+        self.skill_registry.attach_actions(
+            "execute_box",
+            {"set_draft": self.execute_box_skill.set_draft},
+        )
+        self.skill_registry.attach_actions(
+            "execute_query",
+            {"execute_checked": self.execute_query_skill.execute_checked},
+        )
+        self.skill_registry.attach_actions(
+            "query_explain",
+            {"explain": self.query_explain_skill.explain},
+        )
+        self.skill_registry.attach_actions(
+            "query_repair",
+            {"repair_basic": self.query_repair_skill.repair_basic},
+        )
 
     def _register_runtime_tools(self) -> None:
         class RuntimeToolStub:
@@ -721,13 +754,20 @@ class AgentRuntime:
         subset = self.schema_graph_skill.select_relevant_subset(graph, message)
         schema_text = self.schema_graph_skill.summarize(subset) if context_pack.target == "connected_database" else context_pack.schema_summary
         context_pack.schema_summary = schema_text
-        generated = self.text_to_query_skill.generate_sql_draft(
+        skill_context_text = self.skill_registry.context_for(
+            "text_to_sql",
+            user_request=message,
+            conversation_context=context_pack.to_prompt_text(),
+            schema_context=schema_text,
+        )
+        generated = self.text_to_sql_skill.generate_sql_draft(
             request=message,
             model_profile_id=model_profile_id,
             target=target_payload,
             schema_context_text=schema_text,
             schema_graph=subset if isinstance(subset, dict) else graph,
             context_pack_text=context_pack.to_prompt_text(),
+            skill_context_text=skill_context_text,
         )
         generated["schema_graph"] = {
             "status": graph.get("status") if isinstance(graph, dict) else "empty",
@@ -863,7 +903,7 @@ class AgentRuntime:
                     "provider_profile_id": (generated.get("profile") or {}).get("profile_id"),
                     "blocked": False,
                     "warnings": [] if sql else ["llm_returned_no_sql"],
-                    "skills": ["command_router", "database_context", "schema_graph", "text_to_query", "execute_box"],
+                    "skills": ["command_router", "database_context", "schema_graph", "text_to_sql", "execute_box"],
                 },
                 "schema_graph": generated.get("schema_graph"),
                 "agent_state": generated.get("agent_state"),

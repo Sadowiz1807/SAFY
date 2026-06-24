@@ -1,0 +1,12 @@
+{
+  "multi_turn_references": [
+    "lô hàng đó",
+    "các kho vừa nêu",
+    "same shipments",
+    "only show the top ten"
+  ],
+  "clarification_prompts": [
+    "Bạn muốn kho hoặc tuyến nào?",
+    "Which period or supplier should be included?"
+  ]
+}

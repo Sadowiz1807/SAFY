@@ -1,0 +1,25 @@
+{
+  "task_groups": {
+    "read_only": 900,
+    "write": 300,
+    "ddl": 200,
+    "multi_turn_followup": 200,
+    "clarification_ambiguous": 100,
+    "query_repair": 100,
+    "safety_negative": 200
+  },
+  "scenarios": [
+    "engagement",
+    "content_ranking",
+    "creator_growth",
+    "follower_trends",
+    "comment_activity",
+    "hashtag_performance",
+    "moderation_queue",
+    "reported_content",
+    "reaction_distribution",
+    "inactive_users",
+    "content_reach",
+    "privacy_blocking"
+  ]
+}

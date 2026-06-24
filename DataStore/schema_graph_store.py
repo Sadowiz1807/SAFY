@@ -23,8 +23,18 @@ def _now_iso() -> str:
 
 
 def _safe_profile_id(value: str) -> str:
-    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(value or "").strip()).strip("._-")
-    return safe or "main_database"
+    raw = str(value or "").strip()
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", raw).strip("._-")
+    if not safe:
+        safe = "main_database"
+    if safe == raw and len(safe) <= 80:
+        return safe
+    # Sanitization alone is collision-prone (for example ``a/b`` and ``a_b``)
+    # and unbounded IDs can exceed filesystem filename limits. Preserve a short
+    # readable prefix plus a deterministic digest for transformed/long IDs.
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
+    prefix = safe[:64].rstrip("._-") or "profile"
+    return f"{prefix}_{digest}"
 
 
 def _write_json_atomic(path: Path, data: dict[str, Any]) -> None:

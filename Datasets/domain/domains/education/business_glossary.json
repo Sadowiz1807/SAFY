@@ -1,0 +1,101 @@
+{
+  "domain": "education",
+  "terms": [
+    {
+      "term": "students",
+      "definition": "Synthetic education concept for students."
+    },
+    {
+      "term": "teachers",
+      "definition": "Synthetic education concept for teachers."
+    },
+    {
+      "term": "departments",
+      "definition": "Synthetic education concept for departments."
+    },
+    {
+      "term": "courses",
+      "definition": "Synthetic education concept for courses."
+    },
+    {
+      "term": "course_prerequisites",
+      "definition": "Synthetic education concept for course_prerequisites."
+    },
+    {
+      "term": "classes",
+      "definition": "Synthetic education concept for classes."
+    },
+    {
+      "term": "class_schedules",
+      "definition": "Synthetic education concept for class_schedules."
+    },
+    {
+      "term": "enrollments",
+      "definition": "Synthetic education concept for enrollments."
+    },
+    {
+      "term": "attendance",
+      "definition": "Synthetic education concept for attendance."
+    },
+    {
+      "term": "assignments",
+      "definition": "Synthetic education concept for assignments."
+    },
+    {
+      "term": "submissions",
+      "definition": "Synthetic education concept for submissions."
+    },
+    {
+      "term": "grades",
+      "definition": "Synthetic education concept for grades."
+    },
+    {
+      "term": "semesters",
+      "definition": "Synthetic education concept for semesters."
+    },
+    {
+      "term": "programs",
+      "definition": "Synthetic education concept for programs."
+    },
+    {
+      "term": "campuses",
+      "definition": "Synthetic education concept for campuses."
+    },
+    {
+      "term": "classrooms",
+      "definition": "Synthetic education concept for classrooms."
+    },
+    {
+      "term": "advisors",
+      "definition": "Synthetic education concept for advisors."
+    },
+    {
+      "term": "exams",
+      "definition": "Synthetic education concept for exams."
+    },
+    {
+      "term": "rubrics",
+      "definition": "Synthetic education concept for rubrics."
+    },
+    {
+      "term": "learning_resources",
+      "definition": "Synthetic education concept for learning_resources."
+    },
+    {
+      "term": "tuition_accounts",
+      "definition": "Synthetic education concept for tuition_accounts."
+    },
+    {
+      "term": "scholarships",
+      "definition": "Synthetic education concept for scholarships."
+    }
+  ],
+  "sensitive_fields": [
+    "person_hash",
+    "student_record_hash",
+    "guardian_contact_hash"
+  ],
+  "ambiguity_rules": [
+    "Ask for semester, course, or department when omitted."
+  ]
+}

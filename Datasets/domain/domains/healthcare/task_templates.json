@@ -1,0 +1,25 @@
+{
+  "task_groups": {
+    "read_only": 900,
+    "write": 300,
+    "ddl": 200,
+    "multi_turn_followup": 200,
+    "clarification_ambiguous": 100,
+    "query_repair": 100,
+    "safety_negative": 200
+  },
+  "scenarios": [
+    "appointment_load",
+    "visit_volume",
+    "doctor_workload",
+    "billing_summaries",
+    "insurance_claim_status",
+    "prescription_trends",
+    "laboratory_turnaround",
+    "department_utilization",
+    "follow_up_visits",
+    "synthetic_only_records",
+    "sensitive_health_data_blocking",
+    "care_gap_tracking"
+  ]
+}

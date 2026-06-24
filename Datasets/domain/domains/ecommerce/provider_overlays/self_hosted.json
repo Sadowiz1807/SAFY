@@ -1,0 +1,13 @@
+{
+  "provider": "self_hosted",
+  "supported_database_types": [
+    "sqlite",
+    "mysql",
+    "postgresql",
+    "sqlserver",
+    "oracle"
+  ],
+  "notes": "Native/local/self-hosted connections. Secret references remain outside datasets.",
+  "template_only": true,
+  "contains_secret": false
+}

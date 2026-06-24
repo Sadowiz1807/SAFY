@@ -1,0 +1,11 @@
+{
+  "database_type": "supabase_rpc",
+  "database_engine": "postgresql",
+  "sql_dialect": "postgres",
+  "provider": "supabase",
+  "execution_transport": "postgrest_rpc",
+  "driver": "supabase_rpc",
+  "identity_syntax": "native identity",
+  "pagination_syntax": "LIMIT",
+  "validation_method": "static_only"
+}

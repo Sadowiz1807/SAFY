@@ -361,22 +361,26 @@ def _merge_existing_secret_if_requested(payload: dict[str, Any]) -> dict[str, An
 
 
 def _is_supabase_rest_profile(profile: dict[str, Any]) -> bool:
-    """Compatibility predicate for Supabase API/RPC profiles.
+    """Return True only for Supabase API/RPC transport profiles.
 
-    Older code and stored profiles used connection_kind=supabase_rest. The
-    current execution model treats Supabase as a separate RPC-backed provider,
-    not as direct PostgreSQL and not as a REST-only write block.
+    A Supabase-hosted database may also use the native PostgreSQL endpoint. The
+    provider label or ``*.supabase.co`` hostname alone must therefore never force
+    RPC routing when the profile explicitly selects PostgreSQL/native SQL.
     """
-    base_url = str(profile.get("base_url") or "").strip().lower()
-    host = str(profile.get("host") or "").strip().lower()
+    base_url = str(profile.get("base_url") or "").strip()
     provider = str(profile.get("provider") or "").strip().lower()
     driver = str(profile.get("driver") or profile.get("dbms") or "").strip().lower()
     kind = str(profile.get("connection_kind") or "").strip().lower()
-    return (
-        kind in {"supabase_rpc", "supabase_rest"}
-        or driver in {"supabase_rpc", "supabase_rest"}
-        or ("supabase.co" in base_url and ("/rest/v1" in base_url or provider == "supabase"))
-        or (provider == "supabase" and "supabase.co" in host)
+    if kind in {"supabase_rpc", "supabase_rest"} or driver in {"supabase_rpc", "supabase_rest"}:
+        return True
+    if driver in {"postgres", "postgresql"} or kind in {"native_sql", "postgresql"}:
+        return False
+    parsed = urlparse(base_url if "://" in base_url else f"https://{base_url}") if base_url else None
+    return bool(
+        parsed
+        and parsed.scheme.lower() in {"http", "https"}
+        and "supabase.co" in (parsed.hostname or "").lower()
+        and (provider == "supabase" or "/rest/v1" in (parsed.path or "").lower())
     )
 
 
@@ -687,9 +691,10 @@ def _normalize_url_key(value: str | None) -> str:
 
 
 def _database_endpoint_key(profile: dict[str, Any]) -> str:
-    driver = str(profile.get("connection_kind") or profile.get("driver") or profile.get("dbms") or "").lower()
+    kind = str(profile.get("connection_kind") or "").strip().lower()
+    driver = str(profile.get("driver") or profile.get("dbms") or "").strip().lower()
     base_url = _normalize_url_key(profile.get("base_url"))
-    if driver in {"supabase_rpc", "supabase_rest"} or base_url.endswith("/rest/v1") or "supabase.co" in base_url:
+    if kind in {"supabase_rpc", "supabase_rest"} or driver in {"supabase_rpc", "supabase_rest"}:
         return f"supabase_rpc:{base_url}"
     if driver in {"postgres", "postgresql", "mysql", "sqlserver", "oracle"}:
         host = str(profile.get("host") or "").strip().lower()
@@ -700,7 +705,9 @@ def _database_endpoint_key(profile: dict[str, Any]) -> str:
     if driver == "sqlite":
         db_path = str(profile.get("sqlite_path") or profile.get("database") or "").strip()
         return f"sqlite:{Path(db_path).expanduser().resolve() if db_path else ''}"
-    return f"{driver}:{base_url}"
+    if base_url.endswith("/rest/v1"):
+        return f"supabase_rpc:{base_url}"
+    return f"{driver or kind}:{base_url}"
 
 
 def _database_endpoint_conflict(profile: dict[str, Any], profile_id: str | None = None) -> dict[str, Any] | None:
@@ -1685,11 +1692,21 @@ def query_check(payload: QueryCheckRequest):
     if payload.target == "connected_database" and not database_profile_id:
         active = _active_database_profile_raw()
         database_profile_id = active.get("profile_id") if active else None
+    if payload.target == "connected_database" and not database_profile_id:
+        return error_envelope(
+            "DATABASE_PROFILE_REQUIRED",
+            "Save and select a database connection before running Check Safety.",
+        )
     if database_profile_id:
         try:
             database_profile = _materialize_database_profile_for_driver(_database_store().get(database_profile_id))
-        except ProfileStoreError:
-            database_profile = None
+        except ProfileStoreError as exc:
+            return error_envelope(exc.code, str(exc), exc.details)
+        except DriverError as exc:
+            return error_envelope(exc.error_code, str(exc), exc.details)
+        # The saved database profile is the authority for query permissions.
+        # Never let a request body escalate read_only/disabled to credential_permissions.
+        permission_mode = str(database_profile.get("user_query_access_mode") or permission_mode)
     effective_real_db_mode = bool(payload.real_db_mode or (payload.target == "connected_database" and database_profile is not None))
     check = QUERY_ORCHESTRATOR.check(
         sql=payload.sql,
@@ -1723,9 +1740,13 @@ def query_execute(payload: QueryExecuteRequest):
             try:
                 check_record["database_profile"] = _materialize_database_profile_for_driver(_database_store().get(payload.database_profile_id))
                 check_record["real_db_mode"] = True
-            except ProfileStoreError:
-                pass
+            except ProfileStoreError as exc:
+                return error_envelope(exc.code, str(exc), exc.details)
+            except DriverError as exc:
+                return error_envelope(exc.error_code, str(exc), exc.details)
 
+    checked = QUERY_ORCHESTRATOR.checks.get(payload.check_id or "")
+    schema_change_expected = bool(checked and checked.get("invalidates_schema_snapshot"))
     ok, result = QUERY_ORCHESTRATOR.execute(
         check_id=payload.check_id,
         sql_hash=payload.sql_hash,
@@ -1736,6 +1757,13 @@ def query_execute(payload: QueryExecuteRequest):
         row_limit=payload.row_limit,
         sandbox_id=payload.sandbox_id,
     )
+    if ok and schema_change_expected and payload.database_profile_id:
+        result["schema_changed"] = True
+        result["schema_refresh_required"] = True
+        try:
+            result["schema_graph_invalidation"] = SCHEMA_GRAPH_STORE.delete(payload.database_profile_id)
+        except SchemaGraphStoreError as exc:
+            result.setdefault("warnings", []).append(f"Schema graph invalidation failed: {exc.code}")
     session_id = payload.session_id or payload.chat_id
     if session_id:
         AGENT_RUNTIME.record_execute_result(session_id, result)

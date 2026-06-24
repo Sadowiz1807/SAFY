@@ -1,0 +1,11 @@
+{
+  "database_type": "oracle",
+  "database_engine": "oracle",
+  "sql_dialect": "oracle",
+  "provider": "self_hosted",
+  "execution_transport": "native_driver",
+  "driver": "oracle",
+  "identity_syntax": "native identity",
+  "pagination_syntax": "FETCH FIRST",
+  "validation_method": "static_only"
+}

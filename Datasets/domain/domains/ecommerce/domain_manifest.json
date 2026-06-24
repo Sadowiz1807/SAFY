@@ -1,0 +1,27 @@
+{
+  "domain_id": "ecommerce",
+  "domain_name": "E-commerce",
+  "mode": "FROM_SCRATCH",
+  "seed": 20260622,
+  "canonical_task_target": 2000,
+  "database_record_target": 12000,
+  "schema_variants": [
+    "schema_01_small",
+    "schema_02_small",
+    "schema_03_medium",
+    "schema_04_medium",
+    "schema_05_medium",
+    "schema_06_large",
+    "schema_07_large",
+    "schema_08_large"
+  ],
+  "database_types": [
+    "sqlite",
+    "mysql",
+    "postgresql",
+    "sqlserver",
+    "oracle",
+    "supabase_rpc"
+  ],
+  "synthetic_only": true
+}

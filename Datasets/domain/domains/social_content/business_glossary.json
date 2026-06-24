@@ -1,0 +1,101 @@
+{
+  "domain": "social_content",
+  "terms": [
+    {
+      "term": "users",
+      "definition": "Synthetic social content concept for users."
+    },
+    {
+      "term": "profiles",
+      "definition": "Synthetic social content concept for profiles."
+    },
+    {
+      "term": "posts",
+      "definition": "Synthetic social content concept for posts."
+    },
+    {
+      "term": "media_assets",
+      "definition": "Synthetic social content concept for media_assets."
+    },
+    {
+      "term": "comments",
+      "definition": "Synthetic social content concept for comments."
+    },
+    {
+      "term": "reactions",
+      "definition": "Synthetic social content concept for reactions."
+    },
+    {
+      "term": "follows",
+      "definition": "Synthetic social content concept for follows."
+    },
+    {
+      "term": "hashtags",
+      "definition": "Synthetic social content concept for hashtags."
+    },
+    {
+      "term": "post_hashtags",
+      "definition": "Synthetic social content concept for post_hashtags."
+    },
+    {
+      "term": "reports",
+      "definition": "Synthetic social content concept for reports."
+    },
+    {
+      "term": "moderation_actions",
+      "definition": "Synthetic social content concept for moderation_actions."
+    },
+    {
+      "term": "notifications",
+      "definition": "Synthetic social content concept for notifications."
+    },
+    {
+      "term": "creator_metrics",
+      "definition": "Synthetic social content concept for creator_metrics."
+    },
+    {
+      "term": "content_views",
+      "definition": "Synthetic social content concept for content_views."
+    },
+    {
+      "term": "shares",
+      "definition": "Synthetic social content concept for shares."
+    },
+    {
+      "term": "blocks",
+      "definition": "Synthetic social content concept for blocks."
+    },
+    {
+      "term": "messages",
+      "definition": "Synthetic social content concept for messages."
+    },
+    {
+      "term": "groups",
+      "definition": "Synthetic social content concept for groups."
+    },
+    {
+      "term": "group_members",
+      "definition": "Synthetic social content concept for group_members."
+    },
+    {
+      "term": "campaigns",
+      "definition": "Synthetic social content concept for campaigns."
+    },
+    {
+      "term": "live_sessions",
+      "definition": "Synthetic social content concept for live_sessions."
+    },
+    {
+      "term": "subscriptions",
+      "definition": "Synthetic social content concept for subscriptions."
+    }
+  ],
+  "sensitive_fields": [
+    "handle_hash",
+    "private_message_token",
+    "profile_contact_hash"
+  ],
+  "ambiguity_rules": [
+    "Ask for period, content scope, or visibility when omitted."
+  ]
+}

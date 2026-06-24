@@ -12,6 +12,7 @@ from .errors import DriverError
 
 DEFAULT_ROW_LIMIT = 50
 DEFAULT_TIMEOUT_SECONDS = 90
+MAX_ROW_LIMIT = 1000
 SENSITIVE_NAME_RE = re.compile(r"password|token|secret|email|phone|ssn|salary|dob|address|credit|card", re.I)
 
 @dataclass(frozen=True)
@@ -58,6 +59,20 @@ def error_envelope(exc: Exception, driver: str, profile: dict[str, Any]) -> dict
 
 def is_sensitive_name(name: str) -> bool:
     return bool(SENSITIVE_NAME_RE.search(name or ""))
+
+def bounded_row_limit(value: Any, default: int = DEFAULT_ROW_LIMIT) -> int:
+    """Normalize result limits at the driver boundary.
+
+    API validation is the first line of defense, but drivers can also be called
+    from internal workflows and tests. Keep every path within the same bounded
+    range and reject neither malformed nor negative values by accidentally
+    passing them to ``fetchmany``.
+    """
+    try:
+        parsed = int(value) if value not in (None, "") else int(default)
+    except (TypeError, ValueError):
+        parsed = int(default)
+    return max(1, min(parsed, MAX_ROW_LIMIT))
 
 def fetch_rows(cursor: Any, row_limit: int) -> tuple[list[str], list[dict[str, Any]], bool, int]:
     desc = cursor.description or []

@@ -1,0 +1,10 @@
+{
+  "database_type": "sqlite",
+  "validator": "target_database_execution",
+  "container_or_runner": "python_sqlite3",
+  "allow_write_only_on_disposable_target": true,
+  "timeout_seconds": 30,
+  "max_rows": 100,
+  "persist_raw_rows": false,
+  "secret_scan_required": true
+}

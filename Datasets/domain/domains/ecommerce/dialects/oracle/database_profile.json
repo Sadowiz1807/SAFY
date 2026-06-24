@@ -1,0 +1,10 @@
+{
+  "database_type": "oracle",
+  "database_engine": "oracle",
+  "sql_dialect": "oracle",
+  "driver": "oracle",
+  "provider": "self_hosted",
+  "execution_transport": "native_driver",
+  "template_only": true,
+  "contains_secret": false
+}

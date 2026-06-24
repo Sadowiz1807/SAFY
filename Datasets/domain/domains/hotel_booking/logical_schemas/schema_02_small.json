@@ -1,0 +1,422 @@
+{
+  "schema_variant_id": "schema_02_small",
+  "domain": "hotel_booking",
+  "table_count": 8,
+  "entities": [
+    {
+      "table": "guests",
+      "description": "Synthetic hotel booking guests table.",
+      "columns": [
+        {
+          "name": "guest_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for guests."
+        },
+        {
+          "name": "guest_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for guests."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Booking or operational status."
+        },
+        {
+          "name": "guest_segment",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic guest segment."
+        },
+        {
+          "name": "contact_hash",
+          "logical_type": "string",
+          "nullable": true,
+          "sensitive": true,
+          "description": "Hashed synthetic contact marker."
+        }
+      ]
+    },
+    {
+      "table": "hotels",
+      "description": "Synthetic hotel booking hotels table.",
+      "columns": [
+        {
+          "name": "hotel_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for hotels."
+        },
+        {
+          "name": "hotel_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for hotels."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Booking or operational status."
+        },
+        {
+          "name": "guest_id",
+          "logical_type": "string",
+          "foreign_key": "guests.guest_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to guests."
+        }
+      ]
+    },
+    {
+      "table": "room_types",
+      "description": "Synthetic hotel booking room_types table.",
+      "columns": [
+        {
+          "name": "room_type_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for room_types."
+        },
+        {
+          "name": "room_type_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for room_types."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Booking or operational status."
+        },
+        {
+          "name": "hotel_id",
+          "logical_type": "string",
+          "foreign_key": "hotels.hotel_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to hotels."
+        }
+      ]
+    },
+    {
+      "table": "rooms",
+      "description": "Synthetic hotel booking rooms table.",
+      "columns": [
+        {
+          "name": "room_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for rooms."
+        },
+        {
+          "name": "room_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for rooms."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Booking or operational status."
+        },
+        {
+          "name": "room_type_id",
+          "logical_type": "string",
+          "foreign_key": "room_types.room_type_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to room_types."
+        }
+      ]
+    },
+    {
+      "table": "rate_plans",
+      "description": "Synthetic hotel booking rate_plans table.",
+      "columns": [
+        {
+          "name": "rate_plan_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for rate_plans."
+        },
+        {
+          "name": "rate_plan_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for rate_plans."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Booking or operational status."
+        },
+        {
+          "name": "room_id",
+          "logical_type": "string",
+          "foreign_key": "rooms.room_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to rooms."
+        }
+      ]
+    },
+    {
+      "table": "bookings",
+      "description": "Synthetic hotel booking bookings table.",
+      "columns": [
+        {
+          "name": "booking_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for bookings."
+        },
+        {
+          "name": "booking_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for bookings."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Booking or operational status."
+        },
+        {
+          "name": "amount",
+          "logical_type": "decimal",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic money amount."
+        },
+        {
+          "name": "rate_plan_id",
+          "logical_type": "string",
+          "foreign_key": "rate_plans.rate_plan_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to rate_plans."
+        }
+      ]
+    },
+    {
+      "table": "booking_rooms",
+      "description": "Synthetic hotel booking booking_rooms table.",
+      "columns": [
+        {
+          "name": "booking_room_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for booking_rooms."
+        },
+        {
+          "name": "booking_room_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for booking_rooms."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Booking or operational status."
+        },
+        {
+          "name": "booking_id",
+          "logical_type": "string",
+          "foreign_key": "bookings.booking_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to bookings."
+        }
+      ]
+    },
+    {
+      "table": "payments",
+      "description": "Synthetic hotel booking payments table.",
+      "columns": [
+        {
+          "name": "payment_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for payments."
+        },
+        {
+          "name": "payment_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for payments."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Booking or operational status."
+        },
+        {
+          "name": "amount",
+          "logical_type": "decimal",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic money amount."
+        },
+        {
+          "name": "booking_room_id",
+          "logical_type": "string",
+          "foreign_key": "booking_rooms.booking_room_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to booking_rooms."
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "from_table": "hotels",
+      "from_column": "guest_id",
+      "to_table": "guests",
+      "to_column": "guest_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "room_types",
+      "from_column": "hotel_id",
+      "to_table": "hotels",
+      "to_column": "hotel_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "rooms",
+      "from_column": "room_type_id",
+      "to_table": "room_types",
+      "to_column": "room_type_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "rate_plans",
+      "from_column": "room_id",
+      "to_table": "rooms",
+      "to_column": "room_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "bookings",
+      "from_column": "rate_plan_id",
+      "to_table": "rate_plans",
+      "to_column": "rate_plan_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "booking_rooms",
+      "from_column": "booking_id",
+      "to_table": "bookings",
+      "to_column": "booking_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "payments",
+      "from_column": "booking_room_id",
+      "to_table": "booking_rooms",
+      "to_column": "booking_room_id",
+      "type": "many_to_one"
+    }
+  ]
+}

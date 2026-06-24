@@ -1,0 +1,10 @@
+{
+  "database_type": "supabase_rpc",
+  "validator": "target_database_execution",
+  "container_or_runner": "supabase_test_project_or_postgresql_fixture_plus_rpc_contract",
+  "allow_write_only_on_disposable_target": true,
+  "timeout_seconds": 30,
+  "max_rows": 100,
+  "persist_raw_rows": false,
+  "secret_scan_required": true
+}

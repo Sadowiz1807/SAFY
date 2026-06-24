@@ -147,14 +147,42 @@ class AgentWorkflowState:
             self.last_error = {"code": check.get("error_code"), "message": check.get("message") or check.get("summary")}
 
     def remember_execute(self, result: dict[str, Any]) -> None:
-        self.last_execution_result = dict(result or {})
-        self.last_tool_result_summary = {
-            "ok": not bool(result.get("error") or result.get("code")),
-            "row_count": result.get("row_count") or (result.get("metadata") or {}).get("row_count") if isinstance(result.get("metadata"), dict) else result.get("row_count"),
-            "read_only": result.get("read_only"),
+        result = result or {}
+        metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+        row_count = result.get("row_count")
+        if row_count is None:
+            row_count = metadata.get("row_count")
+        error = result.get("error") if isinstance(result.get("error"), dict) else None
+        code = result.get("code") or (error or {}).get("code")
+        message = result.get("message") or (error or {}).get("message")
+
+        # Persist workflow facts only. Result rows, columns, provider payloads,
+        # SQL text, and secrets remain response-scoped and never enter state.
+        self.last_execution_result = {
+            key: value
+            for key, value in {
+                "success": result.get("success") if "success" in result else not bool(code or error),
+                "status": result.get("status"),
+                "code": code,
+                "message": message,
+                "row_count": row_count,
+                "read_only": result.get("read_only", metadata.get("read_only")),
+                "user_controlled": result.get("user_controlled", metadata.get("user_controlled")),
+                "sandbox_validated": result.get("sandbox_validated"),
+                "schema_changed": result.get("schema_changed"),
+                "schema_refresh_required": result.get("schema_refresh_required"),
+                "audit_id": result.get("audit_id"),
+                "action_class": result.get("action_class"),
+            }.items()
+            if value is not None
         }
-        if result.get("error") or result.get("code"):
-            self.last_error = result.get("error") if isinstance(result.get("error"), dict) else {"code": result.get("code"), "message": result.get("message")}
+        self.last_tool_result_summary = {
+            "ok": not bool(code or error),
+            "row_count": row_count,
+            "read_only": result.get("read_only", metadata.get("read_only")),
+        }
+        if code or error:
+            self.last_error = {"code": code, "message": message}
 
     def remember_plan(self, plan: dict[str, Any]) -> None:
         if not isinstance(plan, dict):

@@ -1,0 +1,38 @@
+{
+  "schema_id": "{{DOMAIN_ID}}_schema_001",
+  "domain_id": "{{DOMAIN_ID}}",
+  "description": "{{SCHEMA_DESCRIPTION}}",
+  "entities": [
+    {
+      "name": "{{ENTITY_NAME}}",
+      "description": "{{ENTITY_DESCRIPTION}}",
+      "primary_key": [
+        "id"
+      ],
+      "attributes": [
+        {
+          "name": "id",
+          "logical_type": "id",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Primary identifier"
+        },
+        {
+          "name": "{{COLUMN_NAME}}",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "{{COLUMN_DESCRIPTION}}"
+        },
+        {
+          "name": "created_at",
+          "logical_type": "datetime",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Creation timestamp"
+        }
+      ]
+    }
+  ],
+  "relationships": []
+}

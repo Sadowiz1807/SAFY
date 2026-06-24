@@ -1,0 +1,45 @@
+{
+  "status": "PASS",
+  "domain": "inventory_logistics",
+  "domain_dir": "C:\\Users\\ASUS\\SAFY\\Datasets\\domain\\domains\\inventory_logistics",
+  "canonical_tasks": 2000,
+  "database_records": 12000,
+  "database_summary": {
+    "sqlite": {
+      "records": 2000,
+      "unique_record_ids": 2000,
+      "unique_canonical_ids": 2000
+    },
+    "mysql": {
+      "records": 2000,
+      "unique_record_ids": 2000,
+      "unique_canonical_ids": 2000
+    },
+    "postgresql": {
+      "records": 2000,
+      "unique_record_ids": 2000,
+      "unique_canonical_ids": 2000
+    },
+    "sqlserver": {
+      "records": 2000,
+      "unique_record_ids": 2000,
+      "unique_canonical_ids": 2000
+    },
+    "oracle": {
+      "records": 2000,
+      "unique_record_ids": 2000,
+      "unique_canonical_ids": 2000
+    },
+    "supabase_rpc": {
+      "records": 2000,
+      "unique_record_ids": 2000,
+      "unique_canonical_ids": 2000
+    }
+  },
+  "unique_canonical_ids": 2000,
+  "unique_semantic_signatures": 2000,
+  "unique_normalized_messages": 2000,
+  "unique_query_shapes": 500,
+  "errors": [],
+  "warnings": []
+}

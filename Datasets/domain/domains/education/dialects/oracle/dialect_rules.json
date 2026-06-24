@@ -1,0 +1,5 @@
+{
+  "database_type": "oracle",
+  "dialect": "oracle",
+  "notes": "Resolved real dialect metadata, no scaffold artifacts."
+}

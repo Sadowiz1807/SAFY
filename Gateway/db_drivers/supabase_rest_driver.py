@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 import json
@@ -10,8 +10,9 @@ import re
 import time
 
 from Gateway.sql_classifier import classify_sql
+from Gateway.sql_normalizer import normalize_sql
 
-from .base import DEFAULT_ROW_LIMIT, SecretContext, is_sensitive_name, resolve_secret, success_envelope, user_execution_result
+from .base import bounded_row_limit, DEFAULT_ROW_LIMIT, SecretContext, is_sensitive_name, resolve_secret, success_envelope, user_execution_result
 from .errors import DriverError
 
 _SIMPLE_SELECT_RE = re.compile(
@@ -30,6 +31,33 @@ def _clean_rpc_name(value: Any) -> str:
     if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", raw):
         raise DriverError("SUPABASE_RPC_NAME_INVALID", "Supabase SQL RPC function name is invalid.", {"rpc_function": raw})
     return raw
+
+
+def _unique_dollar_tag(prefix: str, text: str) -> str:
+    index = 0
+    while True:
+        suffix = "" if index == 0 else f"_{index}"
+        tag = f"${prefix}{suffix}$"
+        if tag not in text:
+            return tag
+        index += 1
+
+
+def _atomic_postgres_batch(statements: list[str]) -> str:
+    """Wrap checked statements as one PostgreSQL DO command.
+
+    The installed Supabase bridge accepts one dynamic SQL command. A DO block
+    keeps a checked batch inside one database transaction while still executing
+    each statement in order. User-supplied function/procedure/DO statements are
+    blocked before this driver is reached.
+    """
+    source = "\n".join(statements)
+    outer_tag = _unique_dollar_tag("safy_batch", source)
+    commands: list[str] = []
+    for index, statement in enumerate(statements, start=1):
+        statement_tag = _unique_dollar_tag(f"safy_stmt_{index}", source)
+        commands.append(f"  EXECUTE {statement_tag}{statement}{statement_tag};")
+    return f"DO {outer_tag}\nBEGIN\n" + "\n".join(commands) + f"\nEND\n{outer_tag}"
 
 
 class SupabaseRpcDriver:
@@ -57,11 +85,37 @@ class SupabaseRpcDriver:
                 if not host.startswith(("http://", "https://")):
                     host = "https://" + host
                 base_url = host.rstrip("/")
-        if base_url and "/rest/v1" not in base_url:
-            base_url = base_url.rstrip("/") + "/rest/v1"
-        if not base_url or "/rest/v1" not in base_url or "supabase.co" not in base_url.lower():
-            raise DriverError("DB_BASE_URL_INVALID", "Supabase Base URL must point to https://<project>.supabase.co/rest/v1 or the Supabase project URL.")
-        return base_url
+        if not base_url:
+            raise DriverError("DB_BASE_URL_INVALID", "Supabase Base URL is required.")
+
+        parsed = urlparse(base_url)
+        hostname = (parsed.hostname or "").lower().rstrip(".")
+        valid_host = hostname == "supabase.co" or hostname.endswith(".supabase.co")
+        if (
+            parsed.scheme.lower() != "https"
+            or not valid_host
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            # Validate the parsed hostname rather than searching the raw URL.
+            # A substring check would accept hosts such as
+            # ``project.supabase.co.attacker.example`` and send the API key there.
+            raise DriverError(
+                "DB_BASE_URL_INVALID",
+                "Supabase Base URL must use HTTPS and a *.supabase.co host without credentials, query, or fragment.",
+            )
+
+        path = parsed.path.rstrip("/")
+        if not path:
+            path = "/rest/v1"
+        elif path != "/rest/v1":
+            if path.endswith("/rest/v1"):
+                pass
+            else:
+                raise DriverError("DB_BASE_URL_INVALID", "Supabase Base URL path must be /rest/v1 or the project root.")
+        return f"https://{parsed.netloc}{path}"
 
     def _headers(self, profile: dict[str, Any], *, accept: str = "application/json") -> dict[str, str]:
         secret = self._secret(profile)
@@ -104,9 +158,18 @@ class SupabaseRpcDriver:
             if raw:
                 try:
                     parsed = json.loads(raw)
-                    details["response"] = parsed
+                    if isinstance(parsed, dict):
+                        for source_key, target_key in (
+                            ("code", "provider_error_code"),
+                            ("message", "provider_message"),
+                            ("details", "provider_details"),
+                            ("hint", "provider_hint"),
+                        ):
+                            if parsed.get(source_key) not in (None, ""):
+                                details[target_key] = str(parsed[source_key])[:1000]
                 except json.JSONDecodeError:
-                    details["response_text"] = raw[:1000]
+                    # Do not persist or return arbitrary provider response bodies.
+                    parsed = None
             code = "DB_REQUEST_FAILED"
             message = f"Supabase RPC/REST returned HTTP {exc.code}."
             if exc.code in {401, 403}:
@@ -197,7 +260,7 @@ class SupabaseRpcDriver:
         match = _SIMPLE_SELECT_RE.match(sql or "")
         if not match:
             raise DriverError("SUPABASE_SQL_REQUIRES_RPC", "Supabase API mode can only run simple SELECT through REST. Use the approved SQL RPC for arbitrary SQL after sandbox validation.")
-        row_limit = int((options or {}).get("row_limit") or DEFAULT_ROW_LIMIT)
+        row_limit = bounded_row_limit((options or {}).get("row_limit"), DEFAULT_ROW_LIMIT)
         limit = min(int(match.group("limit") or row_limit), row_limit)
         table = match.group("table").split(".")[-1]
         columns = match.group("columns").strip()
@@ -223,15 +286,20 @@ class SupabaseRpcDriver:
         return success_envelope(self.driver, profile, metadata, columns=out_columns, rows=rows, row_count=len(rows), truncated=False)
 
     def execute_user_sql(self, sql: str, profile: dict[str, Any], secret_context: SecretContext | None = None, options: dict[str, Any] | None = None) -> dict[str, Any]:
-        classification = classify_sql(sql)
-        if classification.is_read_only:
-            return self.execute_readonly(sql, profile, secret_context, options)
+        normalized = normalize_sql(sql)
+        statements = normalized.statements
+        if not statements:
+            raise DriverError("SUPABASE_RPC_EXECUTION_FAILED", "SQL is empty.")
+        classification = classify_sql(statements[0]) if len(statements) == 1 else None
+        if len(statements) == 1 and classification and classification.is_read_only:
+            return self.execute_readonly(statements[0], profile, secret_context, options)
         started = time.perf_counter()
         function = self._rpc_function(profile)
         argument = self._rpc_argument(profile)
         url = self._base_url(profile) + "/rpc/" + function
+        rpc_sql = statements[0] if len(statements) == 1 else _atomic_postgres_batch(statements)
         try:
-            data, status = self._request_json(profile, url, method="POST", body={argument: sql}, operation="execute_rpc")
+            data, status = self._request_json(profile, url, method="POST", body={argument: rpc_sql}, operation="execute_rpc")
         except DriverError as exc:
             if exc.error_code == "SUPABASE_RPC_NOT_INSTALLED":
                 exc.details.setdefault("rpc_function", function)
@@ -241,16 +309,23 @@ class SupabaseRpcDriver:
             raise DriverError(
                 "SUPABASE_RPC_EXECUTION_FAILED",
                 str(data.get("error_message") or "Supabase SQL RPC reported execution failure."),
-                {"rpc_function": function, "response": data, "statement_type": classification.statement_type},
+                {
+                    "rpc_function": function,
+                    "rpc_error_code": str(data.get("error_code") or "SUPABASE_RPC_EXECUTION_FAILED"),
+                    "statement_type": classification.statement_type if classification else "BATCH",
+                    "statement_count": len(statements),
+                },
             )
-        payload = user_execution_result(self.driver, profile, started, row_count=0, statement_type=classification.statement_type)
+        payload = user_execution_result(self.driver, profile, started, row_count=0, statement_type=classification.statement_type if classification else "BATCH")
         payload["metadata"].update({
             "status_code": status,
             "provider": "supabase",
             "connection_kind": "supabase_rpc",
             "execution_transport": "postgrest_rpc",
             "rpc_function": function,
-            "rpc_response": data if isinstance(data, (dict, list)) else None,
+            "rpc_status": str(data.get("status") or "executed") if isinstance(data, dict) else "executed",
+            "statement_count": len(statements),
+            "transactional_batch": len(statements) > 1,
         })
         payload["status"] = "executed"
         return payload

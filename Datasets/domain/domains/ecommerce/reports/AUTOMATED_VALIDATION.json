@@ -1,0 +1,78 @@
+{
+  "domain": "ecommerce",
+  "domain_dir": "C:\\Users\\ASUS\\SAFY\\Datasets\\domain_templates\\domains\\ecommerce",
+  "passed": true,
+  "errors": [],
+  "warnings": [],
+  "counts": {
+    "canonical": 2000,
+    "database_records": 12000,
+    "unique_canonical_ids": 2000,
+    "unique_semantic_signatures": 2000,
+    "unique_query_shapes": 500,
+    "unique_normalized_messages": 2000,
+    "database_types": {
+      "sqlite": {
+        "records": 2000,
+        "unique_record_ids": 2000,
+        "unique_canonical_ids": 2000,
+        "split_counts": {
+          "train": 1500,
+          "validation": 250,
+          "test": 250
+        }
+      },
+      "mysql": {
+        "records": 2000,
+        "unique_record_ids": 2000,
+        "unique_canonical_ids": 2000,
+        "split_counts": {
+          "train": 1500,
+          "validation": 250,
+          "test": 250
+        }
+      },
+      "postgresql": {
+        "records": 2000,
+        "unique_record_ids": 2000,
+        "unique_canonical_ids": 2000,
+        "split_counts": {
+          "train": 1500,
+          "validation": 250,
+          "test": 250
+        }
+      },
+      "sqlserver": {
+        "records": 2000,
+        "unique_record_ids": 2000,
+        "unique_canonical_ids": 2000,
+        "split_counts": {
+          "train": 1500,
+          "validation": 250,
+          "test": 250
+        }
+      },
+      "oracle": {
+        "records": 2000,
+        "unique_record_ids": 2000,
+        "unique_canonical_ids": 2000,
+        "split_counts": {
+          "train": 1500,
+          "validation": 250,
+          "test": 250
+        }
+      },
+      "supabase_rpc": {
+        "records": 2000,
+        "unique_record_ids": 2000,
+        "unique_canonical_ids": 2000,
+        "split_counts": {
+          "train": 1500,
+          "validation": 250,
+          "test": 250
+        }
+      }
+    }
+  },
+  "secret_hits": []
+}

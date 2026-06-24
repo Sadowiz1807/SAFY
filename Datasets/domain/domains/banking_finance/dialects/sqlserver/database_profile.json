@@ -1,0 +1,11 @@
+{
+  "database_type": "sqlserver",
+  "database_engine": "sqlserver",
+  "sql_dialect": "tsql",
+  "provider": "self_hosted",
+  "execution_transport": "native_driver",
+  "driver": "sqlserver",
+  "identity_syntax": "native identity",
+  "pagination_syntax": "TOP/OFFSET",
+  "validation_method": "static_only"
+}

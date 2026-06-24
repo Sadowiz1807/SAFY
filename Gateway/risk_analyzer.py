@@ -56,9 +56,9 @@ def analyze_risk(classification: SQLClassification, targets: TargetExtraction) -
         broad = not re.search(r"\bWHERE\b", sql)
         if broad:
             return RiskAnalysis("critical", reasons + ["broad_mutation_without_where_blocked"], True, True, True, True, True)
-        return RiskAnalysis("high", reasons + ["row_mutation_requires_sandbox"], False, True, True, True, False)
+        return RiskAnalysis("high", reasons + ["row_mutation_requires_sandbox"], False, True, True, False, False)
     if stype == INSERT:
-        return RiskAnalysis("medium", reasons + ["data_mutation"], False, False, True, True, False)
+        return RiskAnalysis("medium", reasons + ["data_mutation"], False, False, True, False, False)
     if stype == TRANSACTION_CONTROL:
         return RiskAnalysis("medium", reasons + ["transaction_control"], False, False, True, False, False)
     if stype == SELECT:

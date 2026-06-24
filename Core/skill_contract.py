@@ -24,9 +24,7 @@ class SkillResult:
     error: dict[str, Any] | None = None
 
 
-class SkillRuntime(Protocol):
-    name: str
+class SkillActionHandler(Protocol):
+    """Callable contract for a shared SAFY action bound to a document skill."""
 
-    def can_handle(self, request: SkillInput) -> bool: ...
-
-    def execute(self, request: SkillInput) -> SkillResult: ...
+    def __call__(self, *args: Any, **kwargs: Any) -> Any: ...

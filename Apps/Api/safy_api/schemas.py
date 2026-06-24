@@ -126,7 +126,7 @@ class QueryExecuteRequest(BaseModel):
     user_decision: Literal["yes", "no"] | None = None
     confirmation_code: str | None = Field(default=None, pattern=r"^\d{4}$")
     real_db_mode: bool = False
-    row_limit: int = 100
+    row_limit: int = Field(default=100, ge=1, le=1000)
 
     model_config = ConfigDict(extra="forbid")
 

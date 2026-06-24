@@ -1,0 +1,10 @@
+{
+  "database_type": "mysql",
+  "database_engine": "mysql",
+  "sql_dialect": "mysql",
+  "driver": "mysql",
+  "provider": "self_hosted",
+  "execution_transport": "native_driver",
+  "template_only": true,
+  "contains_secret": false
+}

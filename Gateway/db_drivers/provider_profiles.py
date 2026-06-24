@@ -46,7 +46,7 @@ ENGINE_ALIASES = {
 
 _ALLOWED = {
     "self_hosted": {"sqlite", "mysql", "postgresql", "sqlserver", "oracle", "fake"},
-    SUPABASE: {"supabase_rpc"},
+    SUPABASE: {"supabase_rpc", "postgresql"},
     GOOGLE_CLOUD_SQL: {"mysql", "postgresql", "sqlserver"},
     AWS_AURORA: {"mysql", "postgresql"},
 }

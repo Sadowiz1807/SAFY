@@ -1,0 +1,1 @@
+INSERT INTO dbo.{{TABLE_NAME}} ({{COLUMN_NAME}}) VALUES (N'synthetic_value_1');

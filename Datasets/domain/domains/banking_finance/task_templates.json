@@ -1,0 +1,25 @@
+{
+  "task_groups": {
+    "read_only": 900,
+    "write": 300,
+    "ddl": 200,
+    "multi_turn_followup": 200,
+    "clarification_ambiguous": 100,
+    "query_repair": 100,
+    "safety_negative": 200
+  },
+  "scenarios": [
+    "account_balances",
+    "cash_flow_summaries",
+    "transaction_classification",
+    "late_loan_payments",
+    "credit_utilization",
+    "branch_performance",
+    "suspicious_activity_indicators",
+    "fee_analysis",
+    "customer_segmentation",
+    "monthly_statements",
+    "protected_data_blocking",
+    "transfer_monitoring"
+  ]
+}

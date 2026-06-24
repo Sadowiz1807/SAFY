@@ -32,7 +32,7 @@ Existing legacy skill retained:
 command_router
 → database_context
 → schema_graph
-→ text_to_query
+→ text_to_sql
 → execute_box
 → user Check Safety
 → query_guard

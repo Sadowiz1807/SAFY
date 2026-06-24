@@ -1,0 +1,12 @@
+{
+  "multi_turn_references": [
+    "tài khoản đó",
+    "các giao dịch vừa nêu",
+    "same customers",
+    "only show the top ten"
+  ],
+  "clarification_prompts": [
+    "Bạn muốn kỳ sao kê nào?",
+    "Which account status should be included?"
+  ]
+}

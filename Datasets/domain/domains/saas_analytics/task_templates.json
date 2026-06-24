@@ -1,0 +1,25 @@
+{
+  "task_groups": {
+    "read_only": 900,
+    "write": 300,
+    "ddl": 200,
+    "multi_turn_followup": 200,
+    "clarification_ambiguous": 100,
+    "query_repair": 100,
+    "safety_negative": 200
+  },
+  "scenarios": [
+    "monthly_recurring_revenue",
+    "annual_recurring_revenue",
+    "churn",
+    "retention_cohorts",
+    "trial_conversion",
+    "feature_adoption",
+    "active_users",
+    "expansion_revenue",
+    "failed_payments",
+    "support_ticket_trends",
+    "incident_impact",
+    "plan_migration"
+  ]
+}

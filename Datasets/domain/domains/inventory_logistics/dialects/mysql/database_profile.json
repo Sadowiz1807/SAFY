@@ -1,0 +1,11 @@
+{
+  "database_type": "mysql",
+  "database_engine": "mysql",
+  "sql_dialect": "mysql",
+  "provider": "self_hosted",
+  "execution_transport": "native_driver",
+  "driver": "mysql",
+  "identity_syntax": "native identity",
+  "pagination_syntax": "LIMIT",
+  "validation_method": "static_only"
+}

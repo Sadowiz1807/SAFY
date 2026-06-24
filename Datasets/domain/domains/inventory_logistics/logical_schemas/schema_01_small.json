@@ -1,0 +1,336 @@
+{
+  "schema_variant_id": "schema_01_small",
+  "domain": "inventory_logistics",
+  "table_count": 6,
+  "entities": [
+    {
+      "table": "products",
+      "description": "Synthetic inventory logistics products table.",
+      "columns": [
+        {
+          "name": "product_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for products."
+        },
+        {
+          "name": "product_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for products."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Inventory or logistics status."
+        }
+      ]
+    },
+    {
+      "table": "warehouses",
+      "description": "Synthetic inventory logistics warehouses table.",
+      "columns": [
+        {
+          "name": "warehouse_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for warehouses."
+        },
+        {
+          "name": "warehouse_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for warehouses."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Inventory or logistics status."
+        },
+        {
+          "name": "contact_hash",
+          "logical_type": "string",
+          "nullable": true,
+          "sensitive": true,
+          "description": "Hashed synthetic contact marker."
+        },
+        {
+          "name": "region",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic operating region."
+        },
+        {
+          "name": "product_id",
+          "logical_type": "string",
+          "foreign_key": "products.product_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to products."
+        }
+      ]
+    },
+    {
+      "table": "storage_locations",
+      "description": "Synthetic inventory logistics storage_locations table.",
+      "columns": [
+        {
+          "name": "storage_location_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for storage_locations."
+        },
+        {
+          "name": "storage_location_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for storage_locations."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Inventory or logistics status."
+        },
+        {
+          "name": "warehouse_id",
+          "logical_type": "string",
+          "foreign_key": "warehouses.warehouse_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to warehouses."
+        }
+      ]
+    },
+    {
+      "table": "stock_levels",
+      "description": "Synthetic inventory logistics stock_levels table.",
+      "columns": [
+        {
+          "name": "stock_level_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for stock_levels."
+        },
+        {
+          "name": "stock_level_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for stock_levels."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Inventory or logistics status."
+        },
+        {
+          "name": "quantity",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic inventory quantity."
+        },
+        {
+          "name": "storage_location_id",
+          "logical_type": "string",
+          "foreign_key": "storage_locations.storage_location_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to storage_locations."
+        }
+      ]
+    },
+    {
+      "table": "stock_movements",
+      "description": "Synthetic inventory logistics stock_movements table.",
+      "columns": [
+        {
+          "name": "stock_movement_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for stock_movements."
+        },
+        {
+          "name": "stock_movement_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for stock_movements."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Inventory or logistics status."
+        },
+        {
+          "name": "quantity",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic inventory quantity."
+        },
+        {
+          "name": "stock_level_id",
+          "logical_type": "string",
+          "foreign_key": "stock_levels.stock_level_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to stock_levels."
+        }
+      ]
+    },
+    {
+      "table": "suppliers",
+      "description": "Synthetic inventory logistics suppliers table.",
+      "columns": [
+        {
+          "name": "supplier_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for suppliers."
+        },
+        {
+          "name": "supplier_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for suppliers."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Inventory or logistics status."
+        },
+        {
+          "name": "contact_hash",
+          "logical_type": "string",
+          "nullable": true,
+          "sensitive": true,
+          "description": "Hashed synthetic contact marker."
+        },
+        {
+          "name": "region",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic operating region."
+        },
+        {
+          "name": "stock_movement_id",
+          "logical_type": "string",
+          "foreign_key": "stock_movements.stock_movement_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to stock_movements."
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "from_table": "warehouses",
+      "from_column": "product_id",
+      "to_table": "products",
+      "to_column": "product_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "storage_locations",
+      "from_column": "warehouse_id",
+      "to_table": "warehouses",
+      "to_column": "warehouse_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "stock_levels",
+      "from_column": "storage_location_id",
+      "to_table": "storage_locations",
+      "to_column": "storage_location_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "stock_movements",
+      "from_column": "stock_level_id",
+      "to_table": "stock_levels",
+      "to_column": "stock_level_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "suppliers",
+      "from_column": "stock_movement_id",
+      "to_table": "stock_movements",
+      "to_column": "stock_movement_id",
+      "type": "many_to_one"
+    }
+  ]
+}

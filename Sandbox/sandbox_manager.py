@@ -9,6 +9,7 @@ import shutil
 
 from Gateway.db_drivers import execute_readonly
 from Gateway.db_drivers.errors import DriverError
+from Gateway.sql_normalizer import normalize_sql
 
 from .audit import SandboxAudit
 from .docker_manager import DockerSandboxManager
@@ -264,16 +265,15 @@ ORDER BY table_name, ordinal_position;
         record = self.transition(sandbox_id, "starting")
         if self._is_postgres(record):
             try:
-                if self.docker.require_available() == "SKIPPED_DOCKER_NOT_REQUIRED":
-                    record.state = "ready"
-                    record.runtime_handle = {**record.runtime_handle, "driver": "postgresql", "docker_status": "SKIPPED_DOCKER_NOT_REQUIRED"}
-                else:
-                    runtime = self.docker.start_postgres(record.sandbox_id, self._owner_password(record))
-                    record.container_ref = runtime["container"]
-                    record.runtime_handle = {**record.runtime_handle, **runtime, "docker_status": "DOCKER_AVAILABLE"}
-                    self._setup_postgres_readonly(record)
-                    self._generate_postgres_schema_cache(record)
-                    record.state = "ready"
+                docker_status = self.docker.require_available()
+                if docker_status != "DOCKER_AVAILABLE":
+                    raise RuntimeError("SANDBOX_DOCKER_REQUIRED_FOR_POSTGRES")
+                runtime = self.docker.start_postgres(record.sandbox_id, self._owner_password(record))
+                record.container_ref = runtime["container"]
+                record.runtime_handle = {**record.runtime_handle, **runtime, "docker_status": "DOCKER_AVAILABLE"}
+                self._setup_postgres_readonly(record)
+                self._generate_postgres_schema_cache(record)
+                record.state = "ready"
             except RuntimeError as exc:
                 record.state = "failed"
                 record.last_error_code = str(exc).split(":", 1)[0] or "SANDBOX_START_FAILED"
@@ -384,7 +384,9 @@ GRANT anon, authenticated, service_role TO supabase_admin WITH ADMIN OPTION;
         Path(record.restore_job_path or d / "restore_job.json").write_text(json.dumps(job, indent=2), encoding="utf-8")
         try:
             if record.dbms == "sqlite":
-                db_path = RestoreManager(d).restore_sqlite(payload.get("source_path"))
+                raw_source = payload.get("source_path")
+                safe_source = str(self._safe_restore_source(raw_source)) if raw_source else None
+                db_path = RestoreManager(d).restore_sqlite(safe_source)
                 SchemaCache(d).generate_sqlite(db_path)
                 record.runtime_handle = {"driver": "sqlite", "database": str(db_path)}
             elif self._is_postgres(record):
@@ -403,6 +405,18 @@ GRANT anon, authenticated, service_role TO supabase_admin WITH ADMIN OPTION;
             record.state = "failed"
             record.last_error_code = exc.code
             job.update({"status": "failed", "error_code": exc.code, "finished_at": now_iso()})
+        except (FileNotFoundError, ValueError) as exc:
+            known_code = str(exc)
+            if known_code not in {
+                "BLOCKED_BACKUP_MISSING",
+                "UNSUPPORTED_BACKUP_FORMAT",
+                "INVALID_SQLITE_BACKUP",
+                "BACKUP_TOO_LARGE",
+            }:
+                known_code = "BLOCKED_BACKUP_RESTORE_FAILED"
+            record.state = "failed"
+            record.last_error_code = known_code
+            job.update({"status": "failed", "error_code": known_code, "finished_at": now_iso()})
         except Exception as exc:
             record.state = "failed"
             record.last_error_code = "BLOCKED_BACKUP_RESTORE_FAILED"
@@ -519,12 +533,24 @@ GRANT anon, authenticated, service_role TO supabase_admin WITH ADMIN OPTION;
                 db_path = record.runtime_handle.get("database") if record.runtime_handle else None
                 if not db_path:
                     db_path = str(self.store.sandbox_dir(sandbox_id) / "runtime.sqlite3")
+                statements = normalize_sql(sql).statements
+                if not statements:
+                    raise SandboxError("SANDBOX_VALIDATION_FAILED", "SQL is empty.", {"sandbox_id": sandbox_id})
                 conn = sqlite3.connect(db_path, timeout=5)
+                cursor = None
                 try:
                     conn.execute("BEGIN")
-                    conn.executescript(sql.strip().rstrip(";") + ";")
-                    conn.rollback()
+                    # Execute statements one by one. sqlite3.executescript()
+                    # performs an implicit COMMIT and would defeat rollback-only
+                    # validation, so it must not be used here.
+                    for statement in statements:
+                        cursor = conn.execute(statement)
+                        cursor.close()
+                        cursor = None
                 finally:
+                    if cursor is not None:
+                        cursor.close()
+                    conn.rollback()
                     conn.close()
                 payload = {
                     "success": True,

@@ -1,0 +1,12 @@
+{
+  "multi_turn_references": [
+    "lớp đó",
+    "các sinh viên vừa nêu",
+    "same classes",
+    "only show the top ten"
+  ],
+  "clarification_prompts": [
+    "Bạn muốn học kỳ nào?",
+    "Which course or department should be included?"
+  ]
+}

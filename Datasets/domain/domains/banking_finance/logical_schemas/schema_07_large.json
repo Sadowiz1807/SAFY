@@ -1,0 +1,978 @@
+{
+  "schema_variant_id": "schema_07_large",
+  "domain": "banking_finance",
+  "table_count": 18,
+  "entities": [
+    {
+      "table": "customers",
+      "description": "Synthetic banking finance customers table.",
+      "columns": [
+        {
+          "name": "customer_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for customers."
+        },
+        {
+          "name": "customer_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for customers."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Operational status."
+        },
+        {
+          "name": "customer_segment",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic customer segment."
+        },
+        {
+          "name": "contact_hash",
+          "logical_type": "string",
+          "nullable": true,
+          "sensitive": true,
+          "description": "Hashed synthetic contact marker."
+        }
+      ]
+    },
+    {
+      "table": "accounts",
+      "description": "Synthetic banking finance accounts table.",
+      "columns": [
+        {
+          "name": "account_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for accounts."
+        },
+        {
+          "name": "account_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for accounts."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Operational status."
+        },
+        {
+          "name": "amount",
+          "logical_type": "decimal",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic money amount."
+        },
+        {
+          "name": "customer_id",
+          "logical_type": "string",
+          "foreign_key": "customers.customer_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to customers."
+        }
+      ]
+    },
+    {
+      "table": "transactions",
+      "description": "Synthetic banking finance transactions table.",
+      "columns": [
+        {
+          "name": "transaction_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for transactions."
+        },
+        {
+          "name": "transaction_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for transactions."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Operational status."
+        },
+        {
+          "name": "amount",
+          "logical_type": "decimal",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic money amount."
+        },
+        {
+          "name": "account_id",
+          "logical_type": "string",
+          "foreign_key": "accounts.account_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to accounts."
+        }
+      ]
+    },
+    {
+      "table": "cards",
+      "description": "Synthetic banking finance cards table.",
+      "columns": [
+        {
+          "name": "card_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for cards."
+        },
+        {
+          "name": "card_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for cards."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Operational status."
+        },
+        {
+          "name": "transaction_id",
+          "logical_type": "string",
+          "foreign_key": "transactions.transaction_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to transactions."
+        }
+      ]
+    },
+    {
+      "table": "branches",
+      "description": "Synthetic banking finance branches table.",
+      "columns": [
+        {
+          "name": "branche_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for branches."
+        },
+        {
+          "name": "branche_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for branches."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Operational status."
+        },
+        {
+          "name": "card_id",
+          "logical_type": "string",
+          "foreign_key": "cards.card_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to cards."
+        }
+      ]
+    },
+    {
+      "table": "loans",
+      "description": "Synthetic banking finance loans table.",
+      "columns": [
+        {
+          "name": "loan_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for loans."
+        },
+        {
+          "name": "loan_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for loans."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Operational status."
+        },
+        {
+          "name": "amount",
+          "logical_type": "decimal",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic money amount."
+        },
+        {
+          "name": "branche_id",
+          "logical_type": "string",
+          "foreign_key": "branches.branche_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to branches."
+        }
+      ]
+    },
+    {
+      "table": "loan_payments",
+      "description": "Synthetic banking finance loan_payments table.",
+      "columns": [
+        {
+          "name": "loan_payment_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for loan_payments."
+        },
+        {
+          "name": "loan_payment_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for loan_payments."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Operational status."
+        },
+        {
+          "name": "amount",
+          "logical_type": "decimal",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic money amount."
+        },
+        {
+          "name": "loan_id",
+          "logical_type": "string",
+          "foreign_key": "loans.loan_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to loans."
+        }
+      ]
+    },
+    {
+      "table": "beneficiaries",
+      "description": "Synthetic banking finance beneficiaries table.",
+      "columns": [
+        {
+          "name": "beneficiarie_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for beneficiaries."
+        },
+        {
+          "name": "beneficiarie_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for beneficiaries."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Operational status."
+        },
+        {
+          "name": "loan_payment_id",
+          "logical_type": "string",
+          "foreign_key": "loan_payments.loan_payment_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to loan_payments."
+        }
+      ]
+    },
+    {
+      "table": "transfers",
+      "description": "Synthetic banking finance transfers table.",
+      "columns": [
+        {
+          "name": "transfer_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for transfers."
+        },
+        {
+          "name": "transfer_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for transfers."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Operational status."
+        },
+        {
+          "name": "amount",
+          "logical_type": "decimal",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic money amount."
+        },
+        {
+          "name": "beneficiarie_id",
+          "logical_type": "string",
+          "foreign_key": "beneficiaries.beneficiarie_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to beneficiaries."
+        }
+      ]
+    },
+    {
+      "table": "fees",
+      "description": "Synthetic banking finance fees table.",
+      "columns": [
+        {
+          "name": "fee_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for fees."
+        },
+        {
+          "name": "fee_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for fees."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Operational status."
+        },
+        {
+          "name": "amount",
+          "logical_type": "decimal",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic money amount."
+        },
+        {
+          "name": "transfer_id",
+          "logical_type": "string",
+          "foreign_key": "transfers.transfer_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to transfers."
+        }
+      ]
+    },
+    {
+      "table": "risk_events",
+      "description": "Synthetic banking finance risk_events table.",
+      "columns": [
+        {
+          "name": "risk_event_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for risk_events."
+        },
+        {
+          "name": "risk_event_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for risk_events."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Operational status."
+        },
+        {
+          "name": "risk_score",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic risk score."
+        },
+        {
+          "name": "fee_id",
+          "logical_type": "string",
+          "foreign_key": "fees.fee_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to fees."
+        }
+      ]
+    },
+    {
+      "table": "fraud_alerts",
+      "description": "Synthetic banking finance fraud_alerts table.",
+      "columns": [
+        {
+          "name": "fraud_alert_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for fraud_alerts."
+        },
+        {
+          "name": "fraud_alert_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for fraud_alerts."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Operational status."
+        },
+        {
+          "name": "risk_score",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic risk score."
+        },
+        {
+          "name": "risk_event_id",
+          "logical_type": "string",
+          "foreign_key": "risk_events.risk_event_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to risk_events."
+        }
+      ]
+    },
+    {
+      "table": "statements",
+      "description": "Synthetic banking finance statements table.",
+      "columns": [
+        {
+          "name": "statement_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for statements."
+        },
+        {
+          "name": "statement_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for statements."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Operational status."
+        },
+        {
+          "name": "fraud_alert_id",
+          "logical_type": "string",
+          "foreign_key": "fraud_alerts.fraud_alert_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to fraud_alerts."
+        }
+      ]
+    },
+    {
+      "table": "credit_limits",
+      "description": "Synthetic banking finance credit_limits table.",
+      "columns": [
+        {
+          "name": "credit_limit_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for credit_limits."
+        },
+        {
+          "name": "credit_limit_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for credit_limits."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Operational status."
+        },
+        {
+          "name": "amount",
+          "logical_type": "decimal",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic money amount."
+        },
+        {
+          "name": "statement_id",
+          "logical_type": "string",
+          "foreign_key": "statements.statement_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to statements."
+        }
+      ]
+    },
+    {
+      "table": "merchant_categories",
+      "description": "Synthetic banking finance merchant_categories table.",
+      "columns": [
+        {
+          "name": "merchant_categorie_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for merchant_categories."
+        },
+        {
+          "name": "merchant_categorie_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for merchant_categories."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Operational status."
+        },
+        {
+          "name": "credit_limit_id",
+          "logical_type": "string",
+          "foreign_key": "credit_limits.credit_limit_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to credit_limits."
+        }
+      ]
+    },
+    {
+      "table": "exchange_rates",
+      "description": "Synthetic banking finance exchange_rates table.",
+      "columns": [
+        {
+          "name": "exchange_rate_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for exchange_rates."
+        },
+        {
+          "name": "exchange_rate_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for exchange_rates."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Operational status."
+        },
+        {
+          "name": "merchant_categorie_id",
+          "logical_type": "string",
+          "foreign_key": "merchant_categories.merchant_categorie_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to merchant_categories."
+        }
+      ]
+    },
+    {
+      "table": "standing_orders",
+      "description": "Synthetic banking finance standing_orders table.",
+      "columns": [
+        {
+          "name": "standing_order_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for standing_orders."
+        },
+        {
+          "name": "standing_order_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for standing_orders."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Operational status."
+        },
+        {
+          "name": "exchange_rate_id",
+          "logical_type": "string",
+          "foreign_key": "exchange_rates.exchange_rate_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to exchange_rates."
+        }
+      ]
+    },
+    {
+      "table": "disputes",
+      "description": "Synthetic banking finance disputes table.",
+      "columns": [
+        {
+          "name": "dispute_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for disputes."
+        },
+        {
+          "name": "dispute_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for disputes."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Operational status."
+        },
+        {
+          "name": "risk_score",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic risk score."
+        },
+        {
+          "name": "standing_order_id",
+          "logical_type": "string",
+          "foreign_key": "standing_orders.standing_order_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to standing_orders."
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "from_table": "accounts",
+      "from_column": "customer_id",
+      "to_table": "customers",
+      "to_column": "customer_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "transactions",
+      "from_column": "account_id",
+      "to_table": "accounts",
+      "to_column": "account_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "cards",
+      "from_column": "transaction_id",
+      "to_table": "transactions",
+      "to_column": "transaction_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "branches",
+      "from_column": "card_id",
+      "to_table": "cards",
+      "to_column": "card_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "loans",
+      "from_column": "branche_id",
+      "to_table": "branches",
+      "to_column": "branche_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "loan_payments",
+      "from_column": "loan_id",
+      "to_table": "loans",
+      "to_column": "loan_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "beneficiaries",
+      "from_column": "loan_payment_id",
+      "to_table": "loan_payments",
+      "to_column": "loan_payment_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "transfers",
+      "from_column": "beneficiarie_id",
+      "to_table": "beneficiaries",
+      "to_column": "beneficiarie_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "fees",
+      "from_column": "transfer_id",
+      "to_table": "transfers",
+      "to_column": "transfer_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "risk_events",
+      "from_column": "fee_id",
+      "to_table": "fees",
+      "to_column": "fee_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "fraud_alerts",
+      "from_column": "risk_event_id",
+      "to_table": "risk_events",
+      "to_column": "risk_event_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "statements",
+      "from_column": "fraud_alert_id",
+      "to_table": "fraud_alerts",
+      "to_column": "fraud_alert_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "credit_limits",
+      "from_column": "statement_id",
+      "to_table": "statements",
+      "to_column": "statement_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "merchant_categories",
+      "from_column": "credit_limit_id",
+      "to_table": "credit_limits",
+      "to_column": "credit_limit_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "exchange_rates",
+      "from_column": "merchant_categorie_id",
+      "to_table": "merchant_categories",
+      "to_column": "merchant_categorie_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "standing_orders",
+      "from_column": "exchange_rate_id",
+      "to_table": "exchange_rates",
+      "to_column": "exchange_rate_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "disputes",
+      "from_column": "standing_order_id",
+      "to_table": "standing_orders",
+      "to_column": "standing_order_id",
+      "type": "many_to_one"
+    }
+  ]
+}

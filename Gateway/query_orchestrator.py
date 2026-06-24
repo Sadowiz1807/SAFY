@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import hashlib
+import threading
 import uuid
 
 from Audit.audit_store import AuditStore
@@ -16,11 +17,26 @@ from .db_drivers import execute_user_sql as driver_execute_user_sql
 from .db_drivers.errors import DriverError
 from .permission_checker import CREDENTIAL_PERMISSIONS, DISABLED, READ_ONLY, evaluate_permission
 from .real_db_policy import real_db_policy
-from .risk_analyzer import analyze_risk
+from .risk_analyzer import RiskAnalysis, analyze_risk
 from .sandbox_adapter import SandboxAdapter
-from .sql_classifier import ADMIN_SECURITY, CROSS_DATABASE_OR_SERVER_LEVEL, DROP, GRANT, MULTI_STATEMENT, REVOKE, TRUNCATE, UNKNOWN, classify_sql
+from .sql_classifier import (
+    ADMIN_SECURITY,
+    BATCH,
+    CROSS_DATABASE_OR_SERVER_LEVEL,
+    DROP,
+    GRANT,
+    MULTI_STATEMENT,
+    REVOKE,
+    SELECT,
+    SESSION_CONTROL,
+    TRANSACTION_CONTROL,
+    TRUNCATE,
+    UNKNOWN,
+    SQLClassification,
+    classify_sql,
+)
 from .sql_guard import BLOCK_PERMISSION, evaluate_sql_guard
-from .statement_target_extractor import extract_targets
+from .statement_target_extractor import TargetExtraction, extract_targets
 from Sandbox.sandbox_manager import SandboxError, SandboxManager
 
 
@@ -31,6 +47,8 @@ class QueryOrchestratorContext:
 
 
 class QueryOrchestrator:
+    MAX_USER_BATCH_STATEMENTS = 64
+
     def __init__(self, context: QueryOrchestratorContext):
         self.context = context
         self.checks: dict[str, dict] = {}
@@ -39,6 +57,9 @@ class QueryOrchestrator:
         self.audit = AuditStore(context.runtime_dir / "audit.sqlite3")
         self.adapter = SandboxAdapter()
         self.sandbox_manager: SandboxManager | None = None
+        # Real execution is serialized so a one-time check_id cannot be raced
+        # by concurrent requests and applied to the database more than once.
+        self._execute_lock = threading.Lock()
 
     @staticmethod
     def sql_hash(normalized_sql: str) -> str:
@@ -81,7 +102,136 @@ class QueryOrchestrator:
             CROSS_DATABASE_OR_SERVER_LEVEL,
             UNKNOWN,
             MULTI_STATEMENT,
+            TRANSACTION_CONTROL,
         }
+
+    @staticmethod
+    def _risk_level_max(levels: list[str]) -> str:
+        rank = {"safe": 0, "low": 0, "medium": 1, "warning": 1, "high": 2, "critical": 3}
+        return max(levels or ["critical"], key=lambda value: rank.get(str(value).lower(), 3))
+
+    def _analyze_execute_box_sql(self, sql: str) -> tuple[SQLClassification, TargetExtraction, RiskAnalysis, dict | None]:
+        """Analyze one statement or a user-controlled batch for the Execute Box.
+
+        The general SQL guard remains fail-closed for multiple statements. The
+        Execute Box is a distinct, explicit user workflow, so it may accept a
+        bounded batch only when every child statement is independently
+        classifiable, policy-allowed, and sandbox-validatable.
+        """
+        classification = classify_sql(sql)
+        if classification.statement_type != MULTI_STATEMENT:
+            targets = extract_targets(classification)
+            return classification, targets, analyze_risk(classification, targets), None
+
+        raw_statements = classification.normalized.statements
+        batch_info: dict = {
+            "statement_count": len(raw_statements),
+            "statement_types": [],
+            "blocked_statement_indexes": [],
+            "block_code": None,
+            "block_message": None,
+        }
+        if len(raw_statements) > self.MAX_USER_BATCH_STATEMENTS:
+            batch_info.update(
+                {
+                    "block_code": "SQL_BATCH_TOO_LARGE",
+                    "block_message": f"A maximum of {self.MAX_USER_BATCH_STATEMENTS} statements is allowed in one Execute Box batch.",
+                }
+            )
+
+        child_risks: list[RiskAnalysis] = []
+        combined_targets: list[str] = []
+        combined_target_warnings: list[str] = []
+        combined_reasons: list[str] = ["multi_statement_user_batch_detected"]
+        blocked_types = {
+            DROP,
+            TRUNCATE,
+            GRANT,
+            REVOKE,
+            ADMIN_SECURITY,
+            CROSS_DATABASE_OR_SERVER_LEVEL,
+            UNKNOWN,
+            MULTI_STATEMENT,
+            TRANSACTION_CONTROL,
+            SESSION_CONTROL,
+        }
+
+        for index, statement in enumerate(raw_statements, start=1):
+            child = classify_sql(statement)
+            child_targets = extract_targets(child)
+            child_risk = analyze_risk(child, child_targets)
+            child_risks.append(child_risk)
+            batch_info["statement_types"].append(child.statement_type)
+            for target_name in child_targets.targets:
+                if target_name not in combined_targets:
+                    combined_targets.append(target_name)
+            combined_target_warnings.extend(child_targets.warnings)
+            combined_reasons.extend(child_risk.risk_reasons)
+
+            # Result-producing SELECT statements are deliberately excluded from
+            # write batches. Their result-set semantics differ across drivers,
+            # while direct read-only execution already has a dedicated path.
+            child_blocked = child.statement_type in blocked_types or child.statement_type == SELECT or child_risk.blocked_by_policy
+            if child_blocked:
+                batch_info["blocked_statement_indexes"].append(index)
+
+        if batch_info["blocked_statement_indexes"] and not batch_info.get("block_code"):
+            types = set(batch_info["statement_types"])
+            if types & {DROP, TRUNCATE}:
+                batch_info.update(
+                    {
+                        "block_code": "DESTRUCTIVE_SQL_BLOCKED",
+                        "block_message": "DROP and TRUNCATE are blocked inside Execute Box batches.",
+                    }
+                )
+            elif TRANSACTION_CONTROL in types:
+                batch_info.update(
+                    {
+                        "block_code": "TRANSACTION_CONTROL_BLOCKED",
+                        "block_message": "BEGIN, COMMIT, and ROLLBACK cannot be included in an Execute Box batch; SAFY owns the transaction boundary.",
+                    }
+                )
+            elif SELECT in types:
+                batch_info.update(
+                    {
+                        "block_code": "SQL_BATCH_MIXED_MODE_UNSUPPORTED",
+                        "block_message": "SELECT cannot be mixed into a write/DDL Execute Box batch. Run read-only queries separately.",
+                    }
+                )
+            else:
+                batch_info.update(
+                    {
+                        "block_code": "SQL_POLICY_BLOCKED",
+                        "block_message": "At least one statement in the batch is administrative, unknown, or otherwise blocked by policy.",
+                    }
+                )
+
+        aggregate_blocked = bool(batch_info.get("block_code"))
+        aggregate_risk = RiskAnalysis(
+            risk_level="critical" if aggregate_blocked else self._risk_level_max([risk.risk_level for risk in child_risks]),
+            risk_reasons=list(dict.fromkeys(combined_reasons + (["blocked_statement_in_batch"] if aggregate_blocked else ["batch_requires_sandbox_validation"]))),
+            requires_confirmation=False,
+            requires_workspace_lock=any(risk.requires_workspace_lock for risk in child_risks),
+            requires_audit_prewrite=True,
+            invalidates_schema_snapshot=any(risk.invalidates_schema_snapshot for risk in child_risks),
+            blocked_by_policy=aggregate_blocked,
+        )
+        batch_classification = SQLClassification(
+            statement_type=BATCH,
+            normalized=classification.normalized,
+            is_read_only=False,
+            is_multi_statement=True,
+            reasons=["multi_statement_user_batch_detected"],
+        )
+        return (
+            batch_classification,
+            TargetExtraction(
+                targets=combined_targets,
+                warnings=list(dict.fromkeys(combined_target_warnings)),
+            ),
+            aggregate_risk,
+            batch_info,
+        )
 
     def _blocked_execute_box_check_response(
         self,
@@ -100,12 +250,15 @@ class QueryOrchestrator:
         code: str,
         message: str,
         warnings: list[str] | None = None,
+        batch_info: dict | None = None,
     ) -> dict:
         reasons = list(dict.fromkeys((warnings or []) + risk.risk_reasons + [code]))
         response = {
             "check_id": check_id,
             "sql_hash": sql_hash,
             "statement_type": classification.statement_type,
+            "statement_types": (batch_info or {}).get("statement_types") or [classification.statement_type],
+            "statement_count": (batch_info or {}).get("statement_count") or 1,
             "target": target,
             "database_profile_id": database_profile_id,
             "sandbox_id": sandbox_id,
@@ -115,6 +268,7 @@ class QueryOrchestrator:
             "risk_level": risk.risk_level or "critical",
             "risk_reasons": risk.risk_reasons,
             "safety_status": "blocked",
+            "check_passed": False,
             "decision": "BLOCK_DESTRUCTIVE_SQL" if code == "DESTRUCTIVE_SQL_BLOCKED" else "BLOCK_POLICY",
             "warnings": reasons,
             "confirmation_required": False,
@@ -148,6 +302,7 @@ class QueryOrchestrator:
             "blocked_sql_display_allowed": True,
             "blocked_message": message,
             "error_code": code,
+            "blocked_statement_indexes": (batch_info or {}).get("blocked_statement_indexes") or [],
         }
         self.audit.write_event(
             event_type="user_execute_box_query_blocked",
@@ -218,27 +373,96 @@ class QueryOrchestrator:
             "blocked_message": policy.get("blocked_message"),
             "error_code": policy.get("error_code"),
         }
-        self.audit.write_event(event_type="real_db_query_check", action="query_check", check_id=check_id, sql_hash=sql_hash, metadata={"redacted_sql": policy["normalized_sql"], "decision": response["decision"], "database_profile_id": database_profile_id})
+        self.audit.write_event(
+            event_type="real_db_query_check",
+            action="query_check",
+            check_id=check_id,
+            sql_hash=sql_hash,
+            metadata={
+                "statement_type": policy["statement_type"],
+                "decision": response["decision"],
+                "database_profile_id": database_profile_id,
+                "raw_sql_persisted": False,
+            },
+        )
         self.checks[check_id] = {**response, "target": target, "database_profile_id": database_profile_id, "consumed": False, "database_profile": database_profile or {}}
         return response
 
     def _user_execute_box_check(self, sql: str, target: str, database_profile_id: str | None, permission_mode: str, expose_confirmation_code: bool, database_profile: dict | None, sandbox_id: str | None) -> dict:
-        classification = classify_sql(sql)
+        classification, targets, risk, batch_info = self._analyze_execute_box_sql(sql)
         normalized_sql = classification.normalized.normalized_sql
         check_id = f"check_user_{uuid.uuid4().hex}"
         sql_hash = self.sql_hash(normalized_sql)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
         sandbox_id = sandbox_id or (f"db_{database_profile_id}" if database_profile_id else "sandbox_default")
-        targets = extract_targets(classification)
-        risk = analyze_risk(classification, targets)
+        if permission_mode == DISABLED:
+            return self._blocked_execute_box_check_response(
+                check_id=check_id,
+                sql_hash=sql_hash,
+                normalized_sql=normalized_sql,
+                classification=classification,
+                targets=targets,
+                risk=risk,
+                target=target,
+                database_profile_id=database_profile_id,
+                sandbox_id=sandbox_id,
+                permission_mode=permission_mode,
+                expires_at=expires_at,
+                code="DATABASE_ACCESS_DISABLED",
+                message="This database profile disables user query execution.",
+                warnings=["database_profile_disabled"],
+                batch_info=batch_info,
+            )
+        if permission_mode == READ_ONLY and not classification.is_read_only:
+            return self._blocked_execute_box_check_response(
+                check_id=check_id,
+                sql_hash=sql_hash,
+                normalized_sql=normalized_sql,
+                classification=classification,
+                targets=targets,
+                risk=risk,
+                target=target,
+                database_profile_id=database_profile_id,
+                sandbox_id=sandbox_id,
+                permission_mode=permission_mode,
+                expires_at=expires_at,
+                code="DATABASE_READ_ONLY",
+                message="This database profile is read-only and cannot execute DDL or DML.",
+                warnings=["read_only_blocks_mutation"],
+                batch_info=batch_info,
+            )
+        if permission_mode not in {READ_ONLY, CREDENTIAL_PERMISSIONS}:
+            return self._blocked_execute_box_check_response(
+                check_id=check_id,
+                sql_hash=sql_hash,
+                normalized_sql=normalized_sql,
+                classification=classification,
+                targets=targets,
+                risk=risk,
+                target=target,
+                database_profile_id=database_profile_id,
+                sandbox_id=sandbox_id,
+                permission_mode=permission_mode,
+                expires_at=expires_at,
+                code="DATABASE_PERMISSION_MODE_INVALID",
+                message="The database profile has an unsupported query access mode.",
+                warnings=["unknown_permission_mode"],
+                batch_info=batch_info,
+            )
 
         if risk.blocked_by_policy or self._is_destructive_or_blocked_statement(classification.statement_type):
-            code = "DESTRUCTIVE_SQL_BLOCKED" if classification.statement_type in {DROP, TRUNCATE} else "SQL_POLICY_BLOCKED"
-            message = (
-                "Destructive SQL is blocked by SAFY policy. Create a reviewed migration or enable a separate administrative workflow."
-                if code == "DESTRUCTIVE_SQL_BLOCKED"
-                else "SQL policy blocks this statement before sandbox validation."
-            )
+            if batch_info and batch_info.get("block_code"):
+                code = str(batch_info["block_code"])
+                message = str(batch_info.get("block_message") or "SQL batch policy blocked execution.")
+            elif classification.statement_type in {DROP, TRUNCATE}:
+                code = "DESTRUCTIVE_SQL_BLOCKED"
+                message = "Destructive SQL is blocked by SAFY policy. Create a reviewed migration or enable a separate administrative workflow."
+            elif classification.statement_type == TRANSACTION_CONTROL:
+                code = "TRANSACTION_CONTROL_BLOCKED"
+                message = "Transaction-control statements are not supported in the Execute Box. Submit the DDL/DML statement itself; SAFY manages sandbox and real-database transactions."
+            else:
+                code = "SQL_POLICY_BLOCKED"
+                message = "SQL policy blocks this statement before sandbox validation."
             return self._blocked_execute_box_check_response(
                 check_id=check_id,
                 sql_hash=sql_hash,
@@ -253,6 +477,7 @@ class QueryOrchestrator:
                 expires_at=expires_at,
                 code=code,
                 message=message,
+                batch_info=batch_info,
             )
 
         if classification.is_read_only:
@@ -260,6 +485,8 @@ class QueryOrchestrator:
                 "check_id": check_id,
                 "sql_hash": sql_hash,
                 "statement_type": classification.statement_type,
+                "statement_types": [classification.statement_type],
+                "statement_count": 1,
                 "target": target,
                 "database_profile_id": database_profile_id,
                 "sandbox_id": sandbox_id,
@@ -269,6 +496,7 @@ class QueryOrchestrator:
                 "risk_level": "safe",
                 "risk_reasons": risk.risk_reasons,
                 "safety_status": "read_only_verified",
+                "check_passed": True,
                 "decision": "ALLOW_READ_ONLY_DIRECT",
                 "warnings": list(dict.fromkeys(risk.risk_reasons + ["read_only_query_sandbox_skipped"])),
                 "confirmation_required": False,
@@ -346,6 +574,8 @@ class QueryOrchestrator:
             "check_id": check_id,
             "sql_hash": sql_hash,
             "statement_type": classification.statement_type,
+            "statement_types": (batch_info or {}).get("statement_types") or [classification.statement_type],
+            "statement_count": (batch_info or {}).get("statement_count") or 1,
             "target": target,
             "database_profile_id": database_profile_id,
             "sandbox_id": sandbox_id,
@@ -355,6 +585,7 @@ class QueryOrchestrator:
             "risk_level": "safe" if allowed and risk.risk_level == "low" else risk.risk_level,
             "risk_reasons": risk.risk_reasons,
             "safety_status": safety_status,
+            "check_passed": allowed,
             "decision": decision,
             "warnings": list(dict.fromkeys(warnings + ["explicit_execute_button_is_confirmation_boundary"])),
             "confirmation_required": False,
@@ -388,6 +619,7 @@ class QueryOrchestrator:
             "blocked_sql_display_allowed": True,
             "blocked_message": blocked_message,
             "error_code": error_code,
+            "blocked_statement_indexes": (batch_info or {}).get("blocked_statement_indexes") or [],
         }
         self.audit.write_event(event_type="user_execute_box_query_check", action="query_check", check_id=check_id, sql_hash=sql_hash, metadata={"statement_type": classification.statement_type, "decision": decision, "database_profile_id": database_profile_id, "sandbox_id": sandbox_id})
         self.checks[check_id] = {**response, "target": target, "database_profile_id": database_profile_id, "sandbox_id": sandbox_id, "consumed": False, "database_profile": database_profile or {}}
@@ -462,6 +694,19 @@ class QueryOrchestrator:
         return response
 
     def execute(self, check_id: str | None, sql_hash: str | None, target: str, user_decision: str | None, confirmation_code: str | None, database_profile_id: str | None = None, row_limit: int = 100, sandbox_id: str | None = None) -> tuple[bool, dict]:
+        with self._execute_lock:
+            return self._execute_once(
+                check_id=check_id,
+                sql_hash=sql_hash,
+                target=target,
+                user_decision=user_decision,
+                confirmation_code=confirmation_code,
+                database_profile_id=database_profile_id,
+                row_limit=row_limit,
+                sandbox_id=sandbox_id,
+            )
+
+    def _execute_once(self, check_id: str | None, sql_hash: str | None, target: str, user_decision: str | None, confirmation_code: str | None, database_profile_id: str | None = None, row_limit: int = 100, sandbox_id: str | None = None) -> tuple[bool, dict]:
         if not check_id or check_id not in self.checks:
             return False, {"code": "QUERY_CHECK_REQUIRED", "message": "Run /query/check before /query/execute."}
         check = self.checks[check_id]
@@ -487,6 +732,8 @@ class QueryOrchestrator:
             return False, {"code": "SQL_HASH_MISMATCH", "message": "SQL hash does not match the safety check."}
         if user_decision == "no":
             check["consumed"] = True
+            self.checks.pop(check_id, None)
+            self.high_risk.consume(check_id)
             return True, {"status": "cancelled", "note": "User cancelled before SQL execution."}
         if user_decision not in {"yes", None}:
             return False, {"code": "MANUAL_CONFIRMATION_MISSING", "message": "User decision must be yes or no."}
@@ -501,6 +748,32 @@ class QueryOrchestrator:
                 return False, {"code": "SANDBOX_VALIDATION_REQUIRED", "message": "Check Safety must pass sandbox validation before real database execution."}
             if user_decision != "yes":
                 return False, {"code": "MANUAL_CONFIRMATION_MISSING", "message": "User must explicitly execute the sandbox-validated SQL."}
+            try:
+                # Prewrite an immutable attempt record, then consume the one-time
+                # check before touching the real database. A driver/network error
+                # can occur after the server committed the statement; retaining
+                # the same check would make a retry capable of double-applying it.
+                self.audit.write_event(
+                    event_type="user_execute_box_real_db_attempt",
+                    action="query_execute_pre",
+                    check_id=check_id,
+                    sql_hash=check["sql_hash"],
+                    status="attempting",
+                    metadata={
+                        "database_profile_id": database_profile_id,
+                        "statement_type": check.get("statement_type"),
+                        "sandbox_id": check.get("sandbox_id"),
+                        "sandbox_validated": True,
+                        "user_controlled": True,
+                        "raw_sql_persisted": False,
+                    },
+                )
+            except Exception:
+                return False, {"code": "AUDIT_PREWRITE_FAILED", "message": "Execution was blocked because the audit prewrite failed."}
+
+            check["consumed"] = True
+            self.checks.pop(check_id, None)
+            self.high_risk.consume(check_id)
             try:
                 payload = driver_execute_user_sql(check["normalized_sql"], check.get("database_profile") or {}, options={"row_limit": row_limit})
                 metadata = payload.get("metadata", {})
@@ -530,14 +803,43 @@ class QueryOrchestrator:
                 payload.setdefault("status", "executed")
                 payload.setdefault("summary", self._execution_success_summary(payload, check.get("statement_type")))
                 payload.setdefault("success_message", payload.get("summary"))
-                check["consumed"] = True
-                self.checks.pop(check_id, None)
-                self.high_risk.consume(check_id)
+                schema_changed = bool(check.get("invalidates_schema_snapshot"))
+                payload.setdefault("schema_changed", schema_changed)
+                payload.setdefault("schema_refresh_required", schema_changed)
                 return True, payload
             except DriverError as exc:
+                self.audit.write_event(
+                    event_type="user_execute_box_real_db_execute",
+                    action="query_execute",
+                    check_id=check_id,
+                    sql_hash=check["sql_hash"],
+                    status="failed",
+                    metadata={
+                        "database_profile_id": database_profile_id,
+                        "statement_type": check.get("statement_type"),
+                        "sandbox_id": check.get("sandbox_id"),
+                        "error_code": exc.error_code,
+                        "raw_sql_persisted": False,
+                    },
+                )
                 return False, {"code": exc.error_code, "message": str(exc), "details": exc.details}
             except AdapterError as exc:
-                return False, exc.to_error()
+                error = exc.to_error()
+                self.audit.write_event(
+                    event_type="user_execute_box_real_db_execute",
+                    action="query_execute",
+                    check_id=check_id,
+                    sql_hash=check["sql_hash"],
+                    status="failed",
+                    metadata={
+                        "database_profile_id": database_profile_id,
+                        "statement_type": check.get("statement_type"),
+                        "sandbox_id": check.get("sandbox_id"),
+                        "error_code": error.get("code"),
+                        "raw_sql_persisted": False,
+                    },
+                )
+                return False, error
         if check.get("confirmation_required", False):
             if not confirmation_code:
                 return False, {"code": "MANUAL_CONFIRMATION_MISSING", "message": "High-risk confirmation code is required."}

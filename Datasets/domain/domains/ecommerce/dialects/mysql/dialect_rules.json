@@ -1,0 +1,22 @@
+{
+  "database_type": "mysql",
+  "types": {
+    "id": "BIGINT AUTO_INCREMENT PRIMARY KEY",
+    "string": "VARCHAR(255)",
+    "datetime": "DATETIME",
+    "boolean": "BOOLEAN",
+    "json": "JSON"
+  },
+  "pagination": "LIMIT {n}",
+  "notes": [
+    "Use backticks only when required.",
+    "Use ON DUPLICATE KEY UPDATE for MySQL-specific upsert."
+  ],
+  "required_validation": [
+    "parse_with_target_dialect",
+    "execute_on_disposable_target",
+    "verify_schema_references",
+    "verify_result_contract",
+    "verify_risk_and_route_labels"
+  ]
+}

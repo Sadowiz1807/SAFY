@@ -1,0 +1,25 @@
+{
+  "task_groups": {
+    "read_only": 900,
+    "write": 300,
+    "ddl": 200,
+    "multi_turn_followup": 200,
+    "clarification_ambiguous": 100,
+    "query_repair": 100,
+    "safety_negative": 200
+  },
+  "scenarios": [
+    "reorder_thresholds",
+    "warehouse_transfers",
+    "stock_aging",
+    "supplier_lead_time",
+    "purchase_order_status",
+    "shipment_delays",
+    "route_performance",
+    "inventory_turnover",
+    "out_of_stock_analysis",
+    "damaged_stock",
+    "delivery_sla",
+    "warehouse_utilization"
+  ]
+}

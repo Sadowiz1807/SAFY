@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Any
 import time
-from .base import DEFAULT_ROW_LIMIT, SecretContext, query_result, resolve_secret, success_envelope, is_sensitive_name, user_execution_result
+from .base import bounded_row_limit, DEFAULT_ROW_LIMIT, SecretContext, query_result, resolve_secret, success_envelope, is_sensitive_name, user_execution_result
 from .errors import DriverError
 from Gateway.sql_classifier import classify_sql
 
@@ -42,7 +42,7 @@ class MySQLDriver:
             return success_envelope(self.driver, profile, {"database": db, "schemas": [db], "tables": tables, "sample_rows_included": False})
         finally: conn.close()
     def execute_readonly(self, sql: str, profile: dict[str, Any], secret_context: SecretContext | None = None, options: dict[str, Any] | None = None) -> dict[str, Any]:
-        row_limit=int((options or {}).get("row_limit") or DEFAULT_ROW_LIMIT); conn=self._connect(profile, secret_context); started=time.perf_counter()
+        row_limit=bounded_row_limit((options or {}).get("row_limit"), DEFAULT_ROW_LIMIT); conn=self._connect(profile, secret_context); started=time.perf_counter()
         try:
             with conn.cursor() as cur:
                 cur.execute(sql)
@@ -50,7 +50,7 @@ class MySQLDriver:
         finally: conn.close()
 
     def execute_user_sql(self, sql: str, profile: dict[str, Any], secret_context: SecretContext | None = None, options: dict[str, Any] | None = None) -> dict[str, Any]:
-        row_limit=int((options or {}).get("row_limit") or DEFAULT_ROW_LIMIT)
+        row_limit=bounded_row_limit((options or {}).get("row_limit"), DEFAULT_ROW_LIMIT)
         classification = classify_sql(sql)
         conn=self._connect(profile, secret_context, read_only=False)
         started=time.perf_counter()

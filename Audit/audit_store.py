@@ -10,6 +10,30 @@ import uuid
 from .audit_schema import AUDIT_SCHEMA, AUDIT_SCHEMA_VERSION
 from Logging.redact import redact_obj, redact_text
 
+_SQL_METADATA_KEYS = {
+    "sql",
+    "raw_sql",
+    "normalized_sql",
+    "redacted_sql",
+    "executed_sql",
+    "query_text",
+}
+
+
+def _drop_sql_metadata(value: Any) -> Any:
+    """Remove SQL text from persisted audit metadata at the storage boundary."""
+    if isinstance(value, dict):
+        return {
+            key: _drop_sql_metadata(item)
+            for key, item in value.items()
+            if str(key).lower() not in _SQL_METADATA_KEYS
+        }
+    if isinstance(value, list):
+        return [_drop_sql_metadata(item) for item in value]
+    if isinstance(value, tuple):
+        return [_drop_sql_metadata(item) for item in value]
+    return value
+
 
 class AuditStoreError(Exception):
     def __init__(self, code: str, message: str):
@@ -42,7 +66,7 @@ class AuditStore:
     def write_event(self, **event: Any) -> dict[str, Any]:
         self.init()
         timestamp = now_iso()
-        metadata = redact_obj(event.get("metadata") or {})
+        metadata = redact_obj(_drop_sql_metadata(event.get("metadata") or {}))
         record = {
             "audit_id": event.get("audit_id") or f"audit_{uuid.uuid4().hex}",
             "event_type": event.get("event_type") or "generic",

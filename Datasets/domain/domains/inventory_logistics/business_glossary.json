@@ -1,0 +1,101 @@
+{
+  "domain": "inventory_logistics",
+  "terms": [
+    {
+      "term": "products",
+      "definition": "Synthetic inventory logistics concept for products."
+    },
+    {
+      "term": "warehouses",
+      "definition": "Synthetic inventory logistics concept for warehouses."
+    },
+    {
+      "term": "storage_locations",
+      "definition": "Synthetic inventory logistics concept for storage_locations."
+    },
+    {
+      "term": "stock_levels",
+      "definition": "Synthetic inventory logistics concept for stock_levels."
+    },
+    {
+      "term": "stock_movements",
+      "definition": "Synthetic inventory logistics concept for stock_movements."
+    },
+    {
+      "term": "suppliers",
+      "definition": "Synthetic inventory logistics concept for suppliers."
+    },
+    {
+      "term": "purchase_orders",
+      "definition": "Synthetic inventory logistics concept for purchase_orders."
+    },
+    {
+      "term": "purchase_order_items",
+      "definition": "Synthetic inventory logistics concept for purchase_order_items."
+    },
+    {
+      "term": "shipments",
+      "definition": "Synthetic inventory logistics concept for shipments."
+    },
+    {
+      "term": "shipment_items",
+      "definition": "Synthetic inventory logistics concept for shipment_items."
+    },
+    {
+      "term": "routes",
+      "definition": "Synthetic inventory logistics concept for routes."
+    },
+    {
+      "term": "vehicles",
+      "definition": "Synthetic inventory logistics concept for vehicles."
+    },
+    {
+      "term": "delivery_events",
+      "definition": "Synthetic inventory logistics concept for delivery_events."
+    },
+    {
+      "term": "inventory_adjustments",
+      "definition": "Synthetic inventory logistics concept for inventory_adjustments."
+    },
+    {
+      "term": "cycle_counts",
+      "definition": "Synthetic inventory logistics concept for cycle_counts."
+    },
+    {
+      "term": "lots",
+      "definition": "Synthetic inventory logistics concept for lots."
+    },
+    {
+      "term": "bins",
+      "definition": "Synthetic inventory logistics concept for bins."
+    },
+    {
+      "term": "carriers",
+      "definition": "Synthetic inventory logistics concept for carriers."
+    },
+    {
+      "term": "freight_invoices",
+      "definition": "Synthetic inventory logistics concept for freight_invoices."
+    },
+    {
+      "term": "returns",
+      "definition": "Synthetic inventory logistics concept for returns."
+    },
+    {
+      "term": "damage_reports",
+      "definition": "Synthetic inventory logistics concept for damage_reports."
+    },
+    {
+      "term": "reorder_policies",
+      "definition": "Synthetic inventory logistics concept for reorder_policies."
+    }
+  ],
+  "sensitive_fields": [
+    "contact_hash",
+    "carrier_account_hash",
+    "supplier_private_note"
+  ],
+  "ambiguity_rules": [
+    "Ask for warehouse, route, or time period when omitted."
+  ]
+}

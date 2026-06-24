@@ -1,0 +1,69 @@
+{
+  "domain": "hotel_booking",
+  "canonical": 2000,
+  "database_records": 12000,
+  "per_database": {
+    "sqlite": 2000,
+    "mysql": 2000,
+    "postgresql": 2000,
+    "sqlserver": 2000,
+    "oracle": 2000,
+    "supabase_rpc": 2000
+  },
+  "validation_level_per_database": {
+    "sqlite": {
+      "parser_availability": "not_available",
+      "parse_pass_count": 0,
+      "disposable_engine_availability": "not_available",
+      "execution_attempted_count": 0,
+      "execution_passed_count": 0,
+      "static_only_count": 1800,
+      "blocked_not_applicable_count": 200
+    },
+    "mysql": {
+      "parser_availability": "not_available",
+      "parse_pass_count": 0,
+      "disposable_engine_availability": "not_available",
+      "execution_attempted_count": 0,
+      "execution_passed_count": 0,
+      "static_only_count": 1800,
+      "blocked_not_applicable_count": 200
+    },
+    "postgresql": {
+      "parser_availability": "not_available",
+      "parse_pass_count": 0,
+      "disposable_engine_availability": "not_available",
+      "execution_attempted_count": 0,
+      "execution_passed_count": 0,
+      "static_only_count": 1800,
+      "blocked_not_applicable_count": 200
+    },
+    "sqlserver": {
+      "parser_availability": "not_available",
+      "parse_pass_count": 0,
+      "disposable_engine_availability": "not_available",
+      "execution_attempted_count": 0,
+      "execution_passed_count": 0,
+      "static_only_count": 1800,
+      "blocked_not_applicable_count": 200
+    },
+    "oracle": {
+      "parser_availability": "not_available",
+      "parse_pass_count": 0,
+      "disposable_engine_availability": "not_available",
+      "execution_attempted_count": 0,
+      "execution_passed_count": 0,
+      "static_only_count": 1800,
+      "blocked_not_applicable_count": 200
+    },
+    "supabase_rpc": {
+      "parser_availability": "not_available",
+      "parse_pass_count": 0,
+      "disposable_engine_availability": "not_available",
+      "execution_attempted_count": 0,
+      "execution_passed_count": 0,
+      "static_only_count": 1800,
+      "blocked_not_applicable_count": 200
+    }
+  }
+}

@@ -1,0 +1,101 @@
+{
+  "domain": "banking_finance",
+  "terms": [
+    {
+      "term": "customers",
+      "definition": "Synthetic banking finance concept for customers."
+    },
+    {
+      "term": "accounts",
+      "definition": "Synthetic banking finance concept for accounts."
+    },
+    {
+      "term": "transactions",
+      "definition": "Synthetic banking finance concept for transactions."
+    },
+    {
+      "term": "cards",
+      "definition": "Synthetic banking finance concept for cards."
+    },
+    {
+      "term": "branches",
+      "definition": "Synthetic banking finance concept for branches."
+    },
+    {
+      "term": "loans",
+      "definition": "Synthetic banking finance concept for loans."
+    },
+    {
+      "term": "loan_payments",
+      "definition": "Synthetic banking finance concept for loan_payments."
+    },
+    {
+      "term": "beneficiaries",
+      "definition": "Synthetic banking finance concept for beneficiaries."
+    },
+    {
+      "term": "transfers",
+      "definition": "Synthetic banking finance concept for transfers."
+    },
+    {
+      "term": "fees",
+      "definition": "Synthetic banking finance concept for fees."
+    },
+    {
+      "term": "risk_events",
+      "definition": "Synthetic banking finance concept for risk_events."
+    },
+    {
+      "term": "fraud_alerts",
+      "definition": "Synthetic banking finance concept for fraud_alerts."
+    },
+    {
+      "term": "statements",
+      "definition": "Synthetic banking finance concept for statements."
+    },
+    {
+      "term": "credit_limits",
+      "definition": "Synthetic banking finance concept for credit_limits."
+    },
+    {
+      "term": "merchant_categories",
+      "definition": "Synthetic banking finance concept for merchant_categories."
+    },
+    {
+      "term": "exchange_rates",
+      "definition": "Synthetic banking finance concept for exchange_rates."
+    },
+    {
+      "term": "standing_orders",
+      "definition": "Synthetic banking finance concept for standing_orders."
+    },
+    {
+      "term": "disputes",
+      "definition": "Synthetic banking finance concept for disputes."
+    },
+    {
+      "term": "collateral",
+      "definition": "Synthetic banking finance concept for collateral."
+    },
+    {
+      "term": "interest_rates",
+      "definition": "Synthetic banking finance concept for interest_rates."
+    },
+    {
+      "term": "audit_events",
+      "definition": "Synthetic banking finance concept for audit_events."
+    },
+    {
+      "term": "customer_segments",
+      "definition": "Synthetic banking finance concept for customer_segments."
+    }
+  ],
+  "sensitive_fields": [
+    "contact_hash",
+    "account_number_hash",
+    "card_token"
+  ],
+  "ambiguity_rules": [
+    "Ask for period, account scope, or status when omitted."
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "database_type": "sqlserver",
+  "types": {
+    "id": "BIGINT IDENTITY(1,1) PRIMARY KEY",
+    "string": "NVARCHAR(255)",
+    "datetime": "DATETIME2",
+    "boolean": "BIT",
+    "json": "NVARCHAR(MAX)"
+  },
+  "pagination": "TOP ({n}) or OFFSET ... FETCH NEXT {n} ROWS ONLY",
+  "notes": [
+    "Use T-SQL.",
+    "Use square brackets only when required.",
+    "Use MERGE carefully and validate semantics."
+  ],
+  "required_validation": [
+    "parse_with_target_dialect",
+    "execute_on_disposable_target",
+    "verify_schema_references",
+    "verify_result_contract",
+    "verify_risk_and_route_labels"
+  ]
+}

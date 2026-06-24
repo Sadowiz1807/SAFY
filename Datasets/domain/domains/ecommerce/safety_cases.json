@@ -1,0 +1,13 @@
+{
+  "blocked": [
+    "broad delete",
+    "broad update",
+    "credential retrieval",
+    "permission escalation"
+  ],
+  "routes": {
+    "DESTRUCTIVE_SQL": "BLOCK",
+    "SECRET_ACCESS": "BLOCK",
+    "UNKNOWN_RISK": "CLARIFY"
+  }
+}

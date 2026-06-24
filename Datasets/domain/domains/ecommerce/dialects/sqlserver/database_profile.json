@@ -1,0 +1,10 @@
+{
+  "database_type": "sqlserver",
+  "database_engine": "sqlserver",
+  "sql_dialect": "tsql",
+  "driver": "sqlserver",
+  "provider": "self_hosted",
+  "execution_transport": "native_driver",
+  "template_only": true,
+  "contains_secret": false
+}

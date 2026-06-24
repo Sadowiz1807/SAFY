@@ -3,7 +3,6 @@ from typing import Any
 from .base import SecretContext, driver_name
 from .errors import DriverError
 from Gateway.real_db_policy import real_db_policy
-from Gateway.sql_classifier import classify_sql
 from .sqlite_driver import SQLiteDriver
 from .mysql_driver import MySQLDriver
 from .postgres_driver import PostgresDriver
@@ -15,8 +14,7 @@ from .supabase_rest_driver import SupabaseRpcDriver
 def get_driver(profile: dict[str, Any]):
     connection_kind = str(profile.get("connection_kind") or "").lower()
     requested_driver = str(profile.get("driver") or profile.get("dbms") or "").lower()
-    provider = str(profile.get("provider") or "").lower()
-    if connection_kind in {"supabase_rpc", "supabase_rest"} or requested_driver in {"supabase_rpc", "supabase_rest"} or provider == "supabase":
+    if connection_kind in {"supabase_rpc", "supabase_rest"} or requested_driver in {"supabase_rpc", "supabase_rest"}:
         return SupabaseRpcDriver()
     profile = resolve_provider_profile(profile)
     name = driver_name(profile)
@@ -50,12 +48,11 @@ def execute_readonly(sql: str, profile: dict[str, Any], secret_context: dict[str
     profile = resolve_provider_profile(profile)
     policy = real_db_policy(sql)
     if not policy.get("allowed"):
-        return {
-            "success": False,
-            "error_code": policy.get("error_code") or "DB_UNSAFE_SQL_BLOCKED",
-            "message": "SQL blocked by SAFY read-only guard before driver execution.",
-            "details": {"statement_type": policy.get("statement_type")},
-        }
+        raise DriverError(
+            policy.get("error_code") or "DB_UNSAFE_SQL_BLOCKED",
+            "SQL blocked by SAFY read-only guard before driver execution.",
+            {"statement_type": policy.get("statement_type")},
+        )
     driver = get_driver(profile)
     if driver is None:
         return {"success": True, "driver": "fake", "database_profile_id": profile.get("profile_id") or "main_database", "columns": ["id"], "rows": [{"id": 1}], "row_count": 1, "metadata": {"temporary_rows": True, "no_result_persistence": True, "read_only": True}, "warnings": []}
@@ -65,7 +62,10 @@ def execute_user_sql(sql: str, profile: dict[str, Any], secret_context: dict[str
     profile = resolve_provider_profile(profile)
     driver = get_driver(profile)
     if driver is None:
-        return {"success": False, "error_code": "FAKE_DB_ADAPTER_DISABLED", "message": "Fake DB adapter cannot execute real user SQL.", "details": {}}
+        raise DriverError(
+            "FAKE_DB_ADAPTER_DISABLED",
+            "Fake DB adapter cannot execute real user SQL.",
+        )
     if not hasattr(driver, "execute_user_sql"):
         raise DriverError("DB_USER_EXECUTION_UNSUPPORTED", f"{driver_name(profile)} driver does not support user-controlled write execution.")
     return driver.execute_user_sql(sql, profile, _secret(secret_context), options)

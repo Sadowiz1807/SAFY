@@ -1,0 +1,101 @@
+{
+  "domain": "hotel_booking",
+  "terms": [
+    {
+      "term": "guests",
+      "definition": "Synthetic hotel booking concept for guests."
+    },
+    {
+      "term": "hotels",
+      "definition": "Synthetic hotel booking concept for hotels."
+    },
+    {
+      "term": "room_types",
+      "definition": "Synthetic hotel booking concept for room_types."
+    },
+    {
+      "term": "rooms",
+      "definition": "Synthetic hotel booking concept for rooms."
+    },
+    {
+      "term": "rate_plans",
+      "definition": "Synthetic hotel booking concept for rate_plans."
+    },
+    {
+      "term": "bookings",
+      "definition": "Synthetic hotel booking concept for bookings."
+    },
+    {
+      "term": "booking_rooms",
+      "definition": "Synthetic hotel booking concept for booking_rooms."
+    },
+    {
+      "term": "payments",
+      "definition": "Synthetic hotel booking concept for payments."
+    },
+    {
+      "term": "services",
+      "definition": "Synthetic hotel booking concept for services."
+    },
+    {
+      "term": "service_orders",
+      "definition": "Synthetic hotel booking concept for service_orders."
+    },
+    {
+      "term": "cancellations",
+      "definition": "Synthetic hotel booking concept for cancellations."
+    },
+    {
+      "term": "reviews",
+      "definition": "Synthetic hotel booking concept for reviews."
+    },
+    {
+      "term": "maintenance_events",
+      "definition": "Synthetic hotel booking concept for maintenance_events."
+    },
+    {
+      "term": "housekeeping_tasks",
+      "definition": "Synthetic hotel booking concept for housekeeping_tasks."
+    },
+    {
+      "term": "loyalty_memberships",
+      "definition": "Synthetic hotel booking concept for loyalty_memberships."
+    },
+    {
+      "term": "promotions",
+      "definition": "Synthetic hotel booking concept for promotions."
+    },
+    {
+      "term": "channels",
+      "definition": "Synthetic hotel booking concept for channels."
+    },
+    {
+      "term": "availability_blocks",
+      "definition": "Synthetic hotel booking concept for availability_blocks."
+    },
+    {
+      "term": "taxes",
+      "definition": "Synthetic hotel booking concept for taxes."
+    },
+    {
+      "term": "deposits",
+      "definition": "Synthetic hotel booking concept for deposits."
+    },
+    {
+      "term": "staff",
+      "definition": "Synthetic hotel booking concept for staff."
+    },
+    {
+      "term": "amenities",
+      "definition": "Synthetic hotel booking concept for amenities."
+    }
+  ],
+  "sensitive_fields": [
+    "contact_hash",
+    "guest_document_hash",
+    "payment_token"
+  ],
+  "ambiguity_rules": [
+    "Ask for stay date, hotel scope, or room type when omitted."
+  ]
+}

@@ -1,0 +1,814 @@
+{
+  "schema_variant_id": "schema_06_large",
+  "domain": "human_resources",
+  "table_count": 15,
+  "entities": [
+    {
+      "table": "employees",
+      "description": "Synthetic human resources employees table.",
+      "columns": [
+        {
+          "name": "employee_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for employees."
+        },
+        {
+          "name": "employee_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for employees."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "HR lifecycle status."
+        },
+        {
+          "name": "person_hash",
+          "logical_type": "string",
+          "nullable": true,
+          "sensitive": true,
+          "description": "Hashed synthetic person marker."
+        },
+        {
+          "name": "employment_segment",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic workforce segment."
+        }
+      ]
+    },
+    {
+      "table": "departments",
+      "description": "Synthetic human resources departments table.",
+      "columns": [
+        {
+          "name": "department_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for departments."
+        },
+        {
+          "name": "department_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for departments."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "HR lifecycle status."
+        },
+        {
+          "name": "employee_id",
+          "logical_type": "string",
+          "foreign_key": "employees.employee_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to employees."
+        }
+      ]
+    },
+    {
+      "table": "positions",
+      "description": "Synthetic human resources positions table.",
+      "columns": [
+        {
+          "name": "position_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for positions."
+        },
+        {
+          "name": "position_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for positions."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "HR lifecycle status."
+        },
+        {
+          "name": "department_id",
+          "logical_type": "string",
+          "foreign_key": "departments.department_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to departments."
+        }
+      ]
+    },
+    {
+      "table": "employment_contracts",
+      "description": "Synthetic human resources employment_contracts table.",
+      "columns": [
+        {
+          "name": "employment_contract_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for employment_contracts."
+        },
+        {
+          "name": "employment_contract_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for employment_contracts."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "HR lifecycle status."
+        },
+        {
+          "name": "position_id",
+          "logical_type": "string",
+          "foreign_key": "positions.position_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to positions."
+        }
+      ]
+    },
+    {
+      "table": "attendance",
+      "description": "Synthetic human resources attendance table.",
+      "columns": [
+        {
+          "name": "attendance_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for attendance."
+        },
+        {
+          "name": "attendance_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for attendance."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "HR lifecycle status."
+        },
+        {
+          "name": "metric_value",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic HR metric."
+        },
+        {
+          "name": "employment_contract_id",
+          "logical_type": "string",
+          "foreign_key": "employment_contracts.employment_contract_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to employment_contracts."
+        }
+      ]
+    },
+    {
+      "table": "work_shifts",
+      "description": "Synthetic human resources work_shifts table.",
+      "columns": [
+        {
+          "name": "work_shift_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for work_shifts."
+        },
+        {
+          "name": "work_shift_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for work_shifts."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "HR lifecycle status."
+        },
+        {
+          "name": "attendance_id",
+          "logical_type": "string",
+          "foreign_key": "attendance.attendance_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to attendance."
+        }
+      ]
+    },
+    {
+      "table": "leave_requests",
+      "description": "Synthetic human resources leave_requests table.",
+      "columns": [
+        {
+          "name": "leave_request_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for leave_requests."
+        },
+        {
+          "name": "leave_request_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for leave_requests."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "HR lifecycle status."
+        },
+        {
+          "name": "work_shift_id",
+          "logical_type": "string",
+          "foreign_key": "work_shifts.work_shift_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to work_shifts."
+        }
+      ]
+    },
+    {
+      "table": "leave_balances",
+      "description": "Synthetic human resources leave_balances table.",
+      "columns": [
+        {
+          "name": "leave_balance_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for leave_balances."
+        },
+        {
+          "name": "leave_balance_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for leave_balances."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "HR lifecycle status."
+        },
+        {
+          "name": "metric_value",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic HR metric."
+        },
+        {
+          "name": "leave_request_id",
+          "logical_type": "string",
+          "foreign_key": "leave_requests.leave_request_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to leave_requests."
+        }
+      ]
+    },
+    {
+      "table": "payroll_runs",
+      "description": "Synthetic human resources payroll_runs table.",
+      "columns": [
+        {
+          "name": "payroll_run_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for payroll_runs."
+        },
+        {
+          "name": "payroll_run_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for payroll_runs."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "HR lifecycle status."
+        },
+        {
+          "name": "amount",
+          "logical_type": "decimal",
+          "nullable": false,
+          "sensitive": true,
+          "description": "Synthetic compensation or benefit amount."
+        },
+        {
+          "name": "leave_balance_id",
+          "logical_type": "string",
+          "foreign_key": "leave_balances.leave_balance_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to leave_balances."
+        }
+      ]
+    },
+    {
+      "table": "payroll_items",
+      "description": "Synthetic human resources payroll_items table.",
+      "columns": [
+        {
+          "name": "payroll_item_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for payroll_items."
+        },
+        {
+          "name": "payroll_item_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for payroll_items."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "HR lifecycle status."
+        },
+        {
+          "name": "amount",
+          "logical_type": "decimal",
+          "nullable": false,
+          "sensitive": true,
+          "description": "Synthetic compensation or benefit amount."
+        },
+        {
+          "name": "payroll_run_id",
+          "logical_type": "string",
+          "foreign_key": "payroll_runs.payroll_run_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to payroll_runs."
+        }
+      ]
+    },
+    {
+      "table": "performance_reviews",
+      "description": "Synthetic human resources performance_reviews table.",
+      "columns": [
+        {
+          "name": "performance_review_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for performance_reviews."
+        },
+        {
+          "name": "performance_review_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for performance_reviews."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "HR lifecycle status."
+        },
+        {
+          "name": "metric_value",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic HR metric."
+        },
+        {
+          "name": "payroll_item_id",
+          "logical_type": "string",
+          "foreign_key": "payroll_items.payroll_item_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to payroll_items."
+        }
+      ]
+    },
+    {
+      "table": "training_courses",
+      "description": "Synthetic human resources training_courses table.",
+      "columns": [
+        {
+          "name": "training_course_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for training_courses."
+        },
+        {
+          "name": "training_course_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for training_courses."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "HR lifecycle status."
+        },
+        {
+          "name": "performance_review_id",
+          "logical_type": "string",
+          "foreign_key": "performance_reviews.performance_review_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to performance_reviews."
+        }
+      ]
+    },
+    {
+      "table": "employee_training",
+      "description": "Synthetic human resources employee_training table.",
+      "columns": [
+        {
+          "name": "employee_training_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for employee_training."
+        },
+        {
+          "name": "employee_training_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for employee_training."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "HR lifecycle status."
+        },
+        {
+          "name": "metric_value",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic HR metric."
+        },
+        {
+          "name": "training_course_id",
+          "logical_type": "string",
+          "foreign_key": "training_courses.training_course_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to training_courses."
+        }
+      ]
+    },
+    {
+      "table": "managers",
+      "description": "Synthetic human resources managers table.",
+      "columns": [
+        {
+          "name": "manager_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for managers."
+        },
+        {
+          "name": "manager_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for managers."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "HR lifecycle status."
+        },
+        {
+          "name": "person_hash",
+          "logical_type": "string",
+          "nullable": true,
+          "sensitive": true,
+          "description": "Hashed synthetic person marker."
+        },
+        {
+          "name": "employment_segment",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic workforce segment."
+        },
+        {
+          "name": "employee_training_id",
+          "logical_type": "string",
+          "foreign_key": "employee_training.employee_training_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to employee_training."
+        }
+      ]
+    },
+    {
+      "table": "office_locations",
+      "description": "Synthetic human resources office_locations table.",
+      "columns": [
+        {
+          "name": "office_location_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for office_locations."
+        },
+        {
+          "name": "office_location_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for office_locations."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "HR lifecycle status."
+        },
+        {
+          "name": "manager_id",
+          "logical_type": "string",
+          "foreign_key": "managers.manager_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to managers."
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "from_table": "departments",
+      "from_column": "employee_id",
+      "to_table": "employees",
+      "to_column": "employee_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "positions",
+      "from_column": "department_id",
+      "to_table": "departments",
+      "to_column": "department_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "employment_contracts",
+      "from_column": "position_id",
+      "to_table": "positions",
+      "to_column": "position_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "attendance",
+      "from_column": "employment_contract_id",
+      "to_table": "employment_contracts",
+      "to_column": "employment_contract_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "work_shifts",
+      "from_column": "attendance_id",
+      "to_table": "attendance",
+      "to_column": "attendance_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "leave_requests",
+      "from_column": "work_shift_id",
+      "to_table": "work_shifts",
+      "to_column": "work_shift_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "leave_balances",
+      "from_column": "leave_request_id",
+      "to_table": "leave_requests",
+      "to_column": "leave_request_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "payroll_runs",
+      "from_column": "leave_balance_id",
+      "to_table": "leave_balances",
+      "to_column": "leave_balance_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "payroll_items",
+      "from_column": "payroll_run_id",
+      "to_table": "payroll_runs",
+      "to_column": "payroll_run_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "performance_reviews",
+      "from_column": "payroll_item_id",
+      "to_table": "payroll_items",
+      "to_column": "payroll_item_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "training_courses",
+      "from_column": "performance_review_id",
+      "to_table": "performance_reviews",
+      "to_column": "performance_review_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "employee_training",
+      "from_column": "training_course_id",
+      "to_table": "training_courses",
+      "to_column": "training_course_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "managers",
+      "from_column": "employee_training_id",
+      "to_table": "employee_training",
+      "to_column": "employee_training_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "office_locations",
+      "from_column": "manager_id",
+      "to_table": "managers",
+      "to_column": "manager_id",
+      "type": "many_to_one"
+    }
+  ]
+}

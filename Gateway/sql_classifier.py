@@ -23,6 +23,7 @@ SESSION_CONTROL = "SESSION_CONTROL"
 CROSS_DATABASE_OR_SERVER_LEVEL = "CROSS_DATABASE_OR_SERVER_LEVEL"
 UNKNOWN = "UNKNOWN"
 MULTI_STATEMENT = "MULTI_STATEMENT"
+BATCH = "BATCH"
 
 READ_ONLY_TYPES = {SELECT}
 MUTATING_TYPES = {INSERT, UPDATE, DELETE, MERGE, CREATE, ALTER, DROP, TRUNCATE, RENAME}
@@ -56,6 +57,25 @@ def _has_word(sql: str, word: str) -> bool:
     return re.search(rf"\b{re.escape(word)}\b", sql, re.IGNORECASE) is not None
 
 
+_SECURITY_DDL_RE = re.compile(
+    r"^\s*(?:CREATE|ALTER)\s+(?:OR\s+REPLACE\s+)?"
+    r"(?:USER|ROLE|LOGIN|DATABASE|TABLESPACE|SERVER|EXTENSION|LANGUAGE|"
+    r"FUNCTION|PROCEDURE|POLICY|PUBLICATION|SUBSCRIPTION)\b",
+    re.IGNORECASE,
+)
+_SECURITY_CLAUSE_RE = re.compile(
+    r"\b(?:ALTER\s+SYSTEM|ALTER\s+DEFAULT\s+PRIVILEGES|"
+    r"(?:ENABLE|DISABLE|FORCE|NO\s+FORCE)\s+ROW\s+LEVEL\s+SECURITY|"
+    r"(?:ENABLE|DISABLE)\s+TRIGGER|OWNER\s+TO|SECURITY\s+(?:DEFINER|INVOKER)|"
+    r"BYPASSRLS|AUTHORIZATION\s+[A-Za-z_])\b",
+    re.IGNORECASE,
+)
+
+
+def _is_security_sensitive_statement(statement: str) -> bool:
+    return bool(_SECURITY_DDL_RE.search(statement) or _SECURITY_CLAUSE_RE.search(statement))
+
+
 def _classify_single(statement: str) -> tuple[str, list[str], bool, bool, bool]:
     upper = statement.upper()
     first = _first_token(statement)
@@ -63,6 +83,12 @@ def _classify_single(statement: str) -> tuple[str, list[str], bool, bool, bool]:
     is_mutating_cte = False
     is_select_into = False
     has_returning = _has_word(statement, "RETURNING")
+
+    # User-approved DDL may reach sandbox validation, but account, server,
+    # executable-code, and row-level-security changes require a distinct
+    # administrative workflow. Classify them before generic CREATE/ALTER.
+    if _is_security_sensitive_statement(statement):
+        return ADMIN_SECURITY, ["admin_or_security_statement"], is_mutating_cte, is_select_into, has_returning
 
     if first == "WITH":
         # Ordered by risk: mutating CTEs must never collapse to SELECT.

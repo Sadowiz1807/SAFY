@@ -1,0 +1,345 @@
+{
+  "schema_variant_id": "schema_01_small",
+  "domain": "ecommerce",
+  "table_count": 6,
+  "entities": [
+    {
+      "table": "customers",
+      "description": "Synthetic ecommerce customers table.",
+      "columns": [
+        {
+          "name": "customer_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for customers."
+        },
+        {
+          "name": "customers_code",
+          "logical_type": "string",
+          "primary_key": false,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Business code for customers."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "primary_key": false,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation time."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "primary_key": false,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Lifecycle status."
+        },
+        {
+          "name": "email_hash",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": true,
+          "description": "Hashed synthetic email."
+        },
+        {
+          "name": "marketing_opt_in",
+          "logical_type": "boolean",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Consent flag."
+        }
+      ]
+    },
+    {
+      "table": "addresses",
+      "description": "Synthetic ecommerce addresses table.",
+      "columns": [
+        {
+          "name": "addresse_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for addresses."
+        },
+        {
+          "name": "addresses_code",
+          "logical_type": "string",
+          "primary_key": false,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Business code for addresses."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "primary_key": false,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation time."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "primary_key": false,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Lifecycle status."
+        },
+        {
+          "name": "customer_id",
+          "logical_type": "string",
+          "primary_key": false,
+          "foreign_key": "customers.customer_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to customers."
+        }
+      ]
+    },
+    {
+      "table": "products",
+      "description": "Synthetic ecommerce products table.",
+      "columns": [
+        {
+          "name": "product_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for products."
+        },
+        {
+          "name": "products_code",
+          "logical_type": "string",
+          "primary_key": false,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Business code for products."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "primary_key": false,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation time."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "primary_key": false,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Lifecycle status."
+        },
+        {
+          "name": "quantity",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic quantity."
+        },
+        {
+          "name": "addresse_id",
+          "logical_type": "string",
+          "primary_key": false,
+          "foreign_key": "addresses.addresse_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to addresses."
+        }
+      ]
+    },
+    {
+      "table": "categories",
+      "description": "Synthetic ecommerce categories table.",
+      "columns": [
+        {
+          "name": "categorie_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for categories."
+        },
+        {
+          "name": "categories_code",
+          "logical_type": "string",
+          "primary_key": false,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Business code for categories."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "primary_key": false,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation time."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "primary_key": false,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Lifecycle status."
+        },
+        {
+          "name": "product_id",
+          "logical_type": "string",
+          "primary_key": false,
+          "foreign_key": "products.product_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to products."
+        }
+      ]
+    },
+    {
+      "table": "product_categories",
+      "description": "Synthetic ecommerce product_categories table.",
+      "columns": [
+        {
+          "name": "product_categorie_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for product_categories."
+        },
+        {
+          "name": "product_categories_code",
+          "logical_type": "string",
+          "primary_key": false,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Business code for product_categories."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "primary_key": false,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation time."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "primary_key": false,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Lifecycle status."
+        },
+        {
+          "name": "categorie_id",
+          "logical_type": "string",
+          "primary_key": false,
+          "foreign_key": "categories.categorie_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to categories."
+        }
+      ]
+    },
+    {
+      "table": "inventory",
+      "description": "Synthetic ecommerce inventory table.",
+      "columns": [
+        {
+          "name": "inventory_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for inventory."
+        },
+        {
+          "name": "inventory_code",
+          "logical_type": "string",
+          "primary_key": false,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Business code for inventory."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "primary_key": false,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation time."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "primary_key": false,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Lifecycle status."
+        },
+        {
+          "name": "quantity",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic quantity."
+        },
+        {
+          "name": "product_categorie_id",
+          "logical_type": "string",
+          "primary_key": false,
+          "foreign_key": "product_categories.product_categorie_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to product_categories."
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "from_table": "addresses",
+      "from_column": "customer_id",
+      "to_table": "customers",
+      "to_column": "customer_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "products",
+      "from_column": "addresse_id",
+      "to_table": "addresses",
+      "to_column": "addresse_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "categories",
+      "from_column": "product_id",
+      "to_table": "products",
+      "to_column": "product_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "product_categories",
+      "from_column": "categorie_id",
+      "to_table": "categories",
+      "to_column": "categorie_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "inventory",
+      "from_column": "product_categorie_id",
+      "to_table": "product_categories",
+      "to_column": "product_categorie_id",
+      "type": "many_to_one"
+    }
+  ]
+}

@@ -18,7 +18,8 @@ class SchemaCache:
         tables = []
         with sqlite3.connect(db_path) as conn:
             for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"):
-                cols = [{"name": r[1], "type": r[2]} for r in conn.execute(f"PRAGMA table_info({name})")]
+                quoted_name = str(name).replace('"', '""')
+                cols = [{"name": r[1], "type": r[2]} for r in conn.execute(f'PRAGMA table_info("{quoted_name}")')]
                 tables.append({"name": name, "columns": cols})
         data = {"generated_at": now_iso(), "dbms": "sqlite", "tables": tables}
         self.path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")

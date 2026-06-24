@@ -1,0 +1,5 @@
+{
+  "database_type": "supabase_rpc",
+  "dialect": "postgres",
+  "notes": "Resolved real dialect metadata, no scaffold artifacts."
+}

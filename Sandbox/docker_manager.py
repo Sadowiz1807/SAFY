@@ -21,11 +21,14 @@ class DockerSandboxManager:
             return False
 
     def require_available(self) -> str:
-        if not self.required():
-            return "SKIPPED_DOCKER_NOT_REQUIRED"
-        if not self.available():
+        # A disabled CI gate means Docker-heavy tests may be skipped; it must not
+        # make a PostgreSQL sandbox appear operational without a container. When
+        # Docker is actually present, use it regardless of the gate flag.
+        if self.available():
+            return "DOCKER_AVAILABLE"
+        if self.required():
             raise RuntimeError("BLOCKED_DOCKER_ENGINE_NOT_RUNNING")
-        return "DOCKER_AVAILABLE"
+        return "SKIPPED_DOCKER_NOT_REQUIRED"
 
     def runtime_names(self, sandbox_id: str, dbms: str) -> dict:
         safe = ''.join(c if c.isalnum() or c in '-_' else '_' for c in sandbox_id)

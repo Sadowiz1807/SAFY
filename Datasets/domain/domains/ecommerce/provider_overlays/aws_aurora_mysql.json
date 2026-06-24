@@ -1,0 +1,8 @@
+{
+  "provider": "aws_aurora",
+  "database_type": "mysql",
+  "engine": "mysql",
+  "dialect": "mysql",
+  "template_only": true,
+  "contains_secret": false
+}

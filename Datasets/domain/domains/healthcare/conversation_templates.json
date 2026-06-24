@@ -1,0 +1,12 @@
+{
+  "multi_turn_references": [
+    "lượt khám đó",
+    "các bệnh nhân vừa nêu",
+    "same visits",
+    "only show the top ten"
+  ],
+  "clarification_prompts": [
+    "Bạn muốn khoảng thời gian khám nào?",
+    "Which department or doctor should be included?"
+  ]
+}

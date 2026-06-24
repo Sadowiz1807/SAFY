@@ -1,0 +1,564 @@
+{
+  "schema_variant_id": "schema_03_medium",
+  "domain": "saas_analytics",
+  "table_count": 10,
+  "entities": [
+    {
+      "table": "organizations",
+      "description": "Synthetic SaaS analytics organizations table.",
+      "columns": [
+        {
+          "name": "organization_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for organizations."
+        },
+        {
+          "name": "organization_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for organizations."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Subscription or operational status."
+        },
+        {
+          "name": "contact_hash",
+          "logical_type": "string",
+          "nullable": true,
+          "sensitive": true,
+          "description": "Hashed synthetic contact marker."
+        },
+        {
+          "name": "segment",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic customer segment."
+        }
+      ]
+    },
+    {
+      "table": "users",
+      "description": "Synthetic SaaS analytics users table.",
+      "columns": [
+        {
+          "name": "user_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for users."
+        },
+        {
+          "name": "user_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for users."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Subscription or operational status."
+        },
+        {
+          "name": "contact_hash",
+          "logical_type": "string",
+          "nullable": true,
+          "sensitive": true,
+          "description": "Hashed synthetic contact marker."
+        },
+        {
+          "name": "segment",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic customer segment."
+        },
+        {
+          "name": "organization_id",
+          "logical_type": "string",
+          "foreign_key": "organizations.organization_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to organizations."
+        }
+      ]
+    },
+    {
+      "table": "plans",
+      "description": "Synthetic SaaS analytics plans table.",
+      "columns": [
+        {
+          "name": "plan_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for plans."
+        },
+        {
+          "name": "plan_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for plans."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Subscription or operational status."
+        },
+        {
+          "name": "user_id",
+          "logical_type": "string",
+          "foreign_key": "users.user_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to users."
+        }
+      ]
+    },
+    {
+      "table": "subscriptions",
+      "description": "Synthetic SaaS analytics subscriptions table.",
+      "columns": [
+        {
+          "name": "subscription_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for subscriptions."
+        },
+        {
+          "name": "subscription_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for subscriptions."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Subscription or operational status."
+        },
+        {
+          "name": "amount",
+          "logical_type": "decimal",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic recurring revenue amount."
+        },
+        {
+          "name": "plan_id",
+          "logical_type": "string",
+          "foreign_key": "plans.plan_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to plans."
+        }
+      ]
+    },
+    {
+      "table": "subscription_changes",
+      "description": "Synthetic SaaS analytics subscription_changes table.",
+      "columns": [
+        {
+          "name": "subscription_change_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for subscription_changes."
+        },
+        {
+          "name": "subscription_change_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for subscription_changes."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Subscription or operational status."
+        },
+        {
+          "name": "subscription_id",
+          "logical_type": "string",
+          "foreign_key": "subscriptions.subscription_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to subscriptions."
+        }
+      ]
+    },
+    {
+      "table": "invoices",
+      "description": "Synthetic SaaS analytics invoices table.",
+      "columns": [
+        {
+          "name": "invoice_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for invoices."
+        },
+        {
+          "name": "invoice_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for invoices."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Subscription or operational status."
+        },
+        {
+          "name": "amount",
+          "logical_type": "decimal",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic recurring revenue amount."
+        },
+        {
+          "name": "subscription_change_id",
+          "logical_type": "string",
+          "foreign_key": "subscription_changes.subscription_change_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to subscription_changes."
+        }
+      ]
+    },
+    {
+      "table": "invoice_items",
+      "description": "Synthetic SaaS analytics invoice_items table.",
+      "columns": [
+        {
+          "name": "invoice_item_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for invoice_items."
+        },
+        {
+          "name": "invoice_item_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for invoice_items."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Subscription or operational status."
+        },
+        {
+          "name": "amount",
+          "logical_type": "decimal",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic recurring revenue amount."
+        },
+        {
+          "name": "invoice_id",
+          "logical_type": "string",
+          "foreign_key": "invoices.invoice_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to invoices."
+        }
+      ]
+    },
+    {
+      "table": "payments",
+      "description": "Synthetic SaaS analytics payments table.",
+      "columns": [
+        {
+          "name": "payment_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for payments."
+        },
+        {
+          "name": "payment_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for payments."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Subscription or operational status."
+        },
+        {
+          "name": "amount",
+          "logical_type": "decimal",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic recurring revenue amount."
+        },
+        {
+          "name": "invoice_item_id",
+          "logical_type": "string",
+          "foreign_key": "invoice_items.invoice_item_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to invoice_items."
+        }
+      ]
+    },
+    {
+      "table": "product_events",
+      "description": "Synthetic SaaS analytics product_events table.",
+      "columns": [
+        {
+          "name": "product_event_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for product_events."
+        },
+        {
+          "name": "product_event_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for product_events."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Subscription or operational status."
+        },
+        {
+          "name": "metric_value",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic usage metric."
+        },
+        {
+          "name": "payment_id",
+          "logical_type": "string",
+          "foreign_key": "payments.payment_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to payments."
+        }
+      ]
+    },
+    {
+      "table": "feature_usage",
+      "description": "Synthetic SaaS analytics feature_usage table.",
+      "columns": [
+        {
+          "name": "feature_usage_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for feature_usage."
+        },
+        {
+          "name": "feature_usage_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for feature_usage."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Subscription or operational status."
+        },
+        {
+          "name": "metric_value",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic usage metric."
+        },
+        {
+          "name": "product_event_id",
+          "logical_type": "string",
+          "foreign_key": "product_events.product_event_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to product_events."
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "from_table": "users",
+      "from_column": "organization_id",
+      "to_table": "organizations",
+      "to_column": "organization_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "plans",
+      "from_column": "user_id",
+      "to_table": "users",
+      "to_column": "user_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "subscriptions",
+      "from_column": "plan_id",
+      "to_table": "plans",
+      "to_column": "plan_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "subscription_changes",
+      "from_column": "subscription_id",
+      "to_table": "subscriptions",
+      "to_column": "subscription_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "invoices",
+      "from_column": "subscription_change_id",
+      "to_table": "subscription_changes",
+      "to_column": "subscription_change_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "invoice_items",
+      "from_column": "invoice_id",
+      "to_table": "invoices",
+      "to_column": "invoice_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "payments",
+      "from_column": "invoice_item_id",
+      "to_table": "invoice_items",
+      "to_column": "invoice_item_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "product_events",
+      "from_column": "payment_id",
+      "to_table": "payments",
+      "to_column": "payment_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "feature_usage",
+      "from_column": "product_event_id",
+      "to_table": "product_events",
+      "to_column": "product_event_id",
+      "type": "many_to_one"
+    }
+  ]
+}

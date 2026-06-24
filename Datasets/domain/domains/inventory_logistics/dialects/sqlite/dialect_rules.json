@@ -1,0 +1,5 @@
+{
+  "database_type": "sqlite",
+  "dialect": "sqlite",
+  "notes": "Resolved real dialect metadata, no scaffold artifacts."
+}

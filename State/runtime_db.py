@@ -28,7 +28,8 @@ def _json(data: dict[str, Any] | None) -> str:
 
 
 _ROW_KEYS = {"rows", "result_rows", "data_rows", "sample_rows", "records"}
-_RESULT_CONTAINER_KEYS = {"chat_display", "query_result", "execute", "execution_result", "result", "payload", "data"}
+_OMITTED_PAYLOAD_KEYS = {"rpc_response"}
+_RESULT_CONTAINER_KEYS = {"chat_display", "query_result", "execute", "execution_result", "result", "payload", "data", "response", "rpc_response"}
 
 
 def _looks_like_row_list(value: Any) -> bool:
@@ -43,7 +44,9 @@ def _strip_result_rows(value: Any, *, in_result_container: bool = False) -> Any:
         for key, item in value.items():
             key_text = str(key)
             child_result_container = in_result_container or key_text in _RESULT_CONTAINER_KEYS
-            if key_text in _ROW_KEYS or (child_result_container and _looks_like_row_list(item)):
+            if key_text in _OMITTED_PAYLOAD_KEYS:
+                result[key] = "<provider response omitted>"
+            elif key_text in _ROW_KEYS or (child_result_container and _looks_like_row_list(item)):
                 result[key] = "<display-only rows omitted>"
             else:
                 result[key] = _strip_result_rows(item, in_result_container=child_result_container)
@@ -109,7 +112,7 @@ class RuntimeDB:
         self.init()
         created_at = now_iso()
         with self.connect() as conn:
-            conn.execute("INSERT INTO workflow_object_provenance VALUES (?, ?, ?, ?, ?, ?, ?)", (object_id, object_type, source, created_by, created_at, stage, _json(metadata)))
+            conn.execute("INSERT INTO workflow_object_provenance VALUES (?, ?, ?, ?, ?, ?, ?)", (object_id, object_type, source, created_by, created_at, stage, _json(_safe_runtime_metadata(metadata))))
         return self.get_provenance(object_id)
 
     def get_provenance(self, object_id: str) -> dict[str, Any]:
@@ -126,7 +129,7 @@ class RuntimeDB:
         self.init()
         sid = snapshot_id or f"snap_{uuid.uuid4().hex}"
         with self.connect() as conn:
-            conn.execute("INSERT INTO schema_snapshots VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (sid, workspace_id, source, schema_hash, _json(schema_json), now_iso(), None, _json(metadata)))
+            conn.execute("INSERT INTO schema_snapshots VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (sid, workspace_id, source, schema_hash, _json(schema_json), now_iso(), None, _json(_safe_runtime_metadata(metadata))))
         return self.get_schema_snapshot(sid)
 
     def get_schema_snapshot(self, snapshot_id: str) -> dict[str, Any]:
@@ -157,7 +160,7 @@ class RuntimeDB:
             if active:
                 conn.rollback()
                 raise RuntimeDBError("WORKSPACE_LOCKED", f"Workspace is locked: {workspace_id}")
-            conn.execute("INSERT INTO workspace_locks VALUES (?, ?, ?, ?, 'active', ?, ?, NULL, ?)", (lid, workspace_id, owner, reason, current_time, expires_at, _json(metadata)))
+            conn.execute("INSERT INTO workspace_locks VALUES (?, ?, ?, ?, 'active', ?, ?, NULL, ?)", (lid, workspace_id, owner, reason, current_time, expires_at, _json(_safe_runtime_metadata(metadata))))
             conn.commit()
         finally:
             conn.close()
@@ -270,7 +273,7 @@ class RuntimeDB:
         self.create_session(chat_id)
         event_id = f"wf_evt_{uuid.uuid4().hex}"
         created_at = now_iso()
-        safe_metadata = redact_obj(metadata or {})
+        safe_metadata = _safe_runtime_metadata(metadata)
         with self.connect() as conn:
             conn.execute(
                 "INSERT INTO agent_workflow_events VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -294,7 +297,7 @@ class RuntimeDB:
         self.create_session(chat_id)
         tool_call_id = f"tool_call_{uuid.uuid4().hex}"
         created_at = now_iso()
-        safe_metadata = redact_obj(metadata or {})
+        safe_metadata = _safe_runtime_metadata(metadata)
         with self.connect() as conn:
             conn.execute(
                 "INSERT INTO agent_tool_calls VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -318,7 +321,7 @@ class RuntimeDB:
         rid = f"rec_{uuid.uuid4().hex}"
         now = now_iso()
         with self.connect() as conn:
-            conn.execute("INSERT INTO recovery_records VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (rid, type, severity, status, redact_text(summary), now, now, _json(metadata)))
+            conn.execute("INSERT INTO recovery_records VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (rid, type, severity, status, redact_text(summary), now, now, _json(_safe_runtime_metadata(metadata))))
         return self.get_recovery_record(rid)
 
     def update_recovery_status(self, recovery_id: str, status: str, summary: str | None = None, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -326,7 +329,7 @@ class RuntimeDB:
         now = now_iso()
         with self.connect() as conn:
             if summary:
-                conn.execute("UPDATE recovery_records SET status=?, summary=?, updated_at=?, metadata_json=? WHERE recovery_id=?", (status, redact_text(summary), now, _json(metadata), recovery_id))
+                conn.execute("UPDATE recovery_records SET status=?, summary=?, updated_at=?, metadata_json=? WHERE recovery_id=?", (status, redact_text(summary), now, _json(_safe_runtime_metadata(metadata)), recovery_id))
             else:
                 conn.execute("UPDATE recovery_records SET status=?, updated_at=? WHERE recovery_id=?", (status, now, recovery_id))
         return self.get_recovery_record(recovery_id)
@@ -361,7 +364,7 @@ class RuntimeDB:
         self.init()
         created_at = now_iso()
         with self.connect() as conn:
-            conn.execute("INSERT INTO workspaces_registry VALUES (?, ?, ?, ?, ?, ?)", (workspace_id, chat_id, path_redacted, status, created_at, _json(metadata)))
+            conn.execute("INSERT INTO workspaces_registry VALUES (?, ?, ?, ?, ?, ?)", (workspace_id, chat_id, path_redacted, status, created_at, _json(_safe_runtime_metadata(metadata))))
         return self.get_workspace(workspace_id)
 
     def get_workspace(self, workspace_id: str) -> dict[str, Any]:

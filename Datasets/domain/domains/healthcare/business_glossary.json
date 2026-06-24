@@ -1,0 +1,101 @@
+{
+  "domain": "healthcare",
+  "terms": [
+    {
+      "term": "patients",
+      "definition": "Synthetic healthcare concept for patients."
+    },
+    {
+      "term": "doctors",
+      "definition": "Synthetic healthcare concept for doctors."
+    },
+    {
+      "term": "departments",
+      "definition": "Synthetic healthcare concept for departments."
+    },
+    {
+      "term": "appointments",
+      "definition": "Synthetic healthcare concept for appointments."
+    },
+    {
+      "term": "visits",
+      "definition": "Synthetic healthcare concept for visits."
+    },
+    {
+      "term": "diagnoses",
+      "definition": "Synthetic healthcare concept for diagnoses."
+    },
+    {
+      "term": "procedures",
+      "definition": "Synthetic healthcare concept for procedures."
+    },
+    {
+      "term": "prescriptions",
+      "definition": "Synthetic healthcare concept for prescriptions."
+    },
+    {
+      "term": "medications",
+      "definition": "Synthetic healthcare concept for medications."
+    },
+    {
+      "term": "laboratory_orders",
+      "definition": "Synthetic healthcare concept for laboratory_orders."
+    },
+    {
+      "term": "laboratory_results",
+      "definition": "Synthetic healthcare concept for laboratory_results."
+    },
+    {
+      "term": "billing",
+      "definition": "Synthetic healthcare concept for billing."
+    },
+    {
+      "term": "insurance_claims",
+      "definition": "Synthetic healthcare concept for insurance_claims."
+    },
+    {
+      "term": "care_plans",
+      "definition": "Synthetic healthcare concept for care_plans."
+    },
+    {
+      "term": "referrals",
+      "definition": "Synthetic healthcare concept for referrals."
+    },
+    {
+      "term": "vitals",
+      "definition": "Synthetic healthcare concept for vitals."
+    },
+    {
+      "term": "immunizations",
+      "definition": "Synthetic healthcare concept for immunizations."
+    },
+    {
+      "term": "wards",
+      "definition": "Synthetic healthcare concept for wards."
+    },
+    {
+      "term": "beds",
+      "definition": "Synthetic healthcare concept for beds."
+    },
+    {
+      "term": "providers",
+      "definition": "Synthetic healthcare concept for providers."
+    },
+    {
+      "term": "follow_ups",
+      "definition": "Synthetic healthcare concept for follow_ups."
+    },
+    {
+      "term": "clinical_notes",
+      "definition": "Synthetic healthcare concept for clinical_notes."
+    }
+  ],
+  "sensitive_fields": [
+    "patient_hash",
+    "clinical_note_hash",
+    "insurance_member_hash"
+  ],
+  "ambiguity_rules": [
+    "Ask for visit period, department, or provider when omitted."
+  ]
+}

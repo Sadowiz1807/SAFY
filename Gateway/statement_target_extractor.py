@@ -21,12 +21,17 @@ def extract_targets(classification: SQLClassification) -> TargetExtraction:
     targets: list[str] = []
     warnings: list[str] = []
     patterns = [
+        # CREATE TABLE IF NOT EXISTS previously captured the token "IF" as the
+        # affected table. Keep the optional clause inside the pattern so the
+        # actual object name is returned.
+        r"\b(?:CREATE|ALTER|DROP|TRUNCATE)\s+TABLE\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?([A-Za-z0-9_\.\"`\[\]]+)",
+        r"\bCREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?[A-Za-z0-9_\.\"`\[\]]+\s+ON\s+([A-Za-z0-9_\.\"`\[\]]+)",
         r"\bFROM\s+([A-Za-z0-9_\.\"`\[\]]+)",
         r"\bJOIN\s+([A-Za-z0-9_\.\"`\[\]]+)",
         r"\bINTO\s+([A-Za-z0-9_\.\"`\[\]]+)",
         r"\bUPDATE\s+([A-Za-z0-9_\.\"`\[\]]+)",
         r"\bDELETE\s+FROM\s+([A-Za-z0-9_\.\"`\[\]]+)",
-        r"\bTABLE\s+([A-Za-z0-9_\.\"`\[\]]+)",
+        r"\bTABLE\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?([A-Za-z0-9_\.\"`\[\]]+)",
         r"\bDATABASE\s+([A-Za-z0-9_\.\"`\[\]]+)",
     ]
     for pattern in patterns:

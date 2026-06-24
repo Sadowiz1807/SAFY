@@ -1,0 +1,12 @@
+{
+  "multi_turn_references": [
+    "nhân viên đó",
+    "các phòng ban vừa nêu",
+    "same employees",
+    "only show the top ten"
+  ],
+  "clarification_prompts": [
+    "Bạn muốn kỳ nhân sự nào?",
+    "Which department or manager should be included?"
+  ]
+}

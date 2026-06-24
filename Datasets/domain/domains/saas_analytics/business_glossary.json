@@ -1,0 +1,101 @@
+{
+  "domain": "saas_analytics",
+  "terms": [
+    {
+      "term": "organizations",
+      "definition": "Synthetic SaaS analytics concept for organizations."
+    },
+    {
+      "term": "users",
+      "definition": "Synthetic SaaS analytics concept for users."
+    },
+    {
+      "term": "plans",
+      "definition": "Synthetic SaaS analytics concept for plans."
+    },
+    {
+      "term": "subscriptions",
+      "definition": "Synthetic SaaS analytics concept for subscriptions."
+    },
+    {
+      "term": "subscription_changes",
+      "definition": "Synthetic SaaS analytics concept for subscription_changes."
+    },
+    {
+      "term": "invoices",
+      "definition": "Synthetic SaaS analytics concept for invoices."
+    },
+    {
+      "term": "invoice_items",
+      "definition": "Synthetic SaaS analytics concept for invoice_items."
+    },
+    {
+      "term": "payments",
+      "definition": "Synthetic SaaS analytics concept for payments."
+    },
+    {
+      "term": "product_events",
+      "definition": "Synthetic SaaS analytics concept for product_events."
+    },
+    {
+      "term": "feature_usage",
+      "definition": "Synthetic SaaS analytics concept for feature_usage."
+    },
+    {
+      "term": "trials",
+      "definition": "Synthetic SaaS analytics concept for trials."
+    },
+    {
+      "term": "support_tickets",
+      "definition": "Synthetic SaaS analytics concept for support_tickets."
+    },
+    {
+      "term": "service_incidents",
+      "definition": "Synthetic SaaS analytics concept for service_incidents."
+    },
+    {
+      "term": "workspaces",
+      "definition": "Synthetic SaaS analytics concept for workspaces."
+    },
+    {
+      "term": "seats",
+      "definition": "Synthetic SaaS analytics concept for seats."
+    },
+    {
+      "term": "usage_limits",
+      "definition": "Synthetic SaaS analytics concept for usage_limits."
+    },
+    {
+      "term": "billing_accounts",
+      "definition": "Synthetic SaaS analytics concept for billing_accounts."
+    },
+    {
+      "term": "coupons",
+      "definition": "Synthetic SaaS analytics concept for coupons."
+    },
+    {
+      "term": "renewals",
+      "definition": "Synthetic SaaS analytics concept for renewals."
+    },
+    {
+      "term": "integration_events",
+      "definition": "Synthetic SaaS analytics concept for integration_events."
+    },
+    {
+      "term": "account_health_scores",
+      "definition": "Synthetic SaaS analytics concept for account_health_scores."
+    },
+    {
+      "term": "customer_success_notes",
+      "definition": "Synthetic SaaS analytics concept for customer_success_notes."
+    }
+  ],
+  "sensitive_fields": [
+    "contact_hash",
+    "billing_account_token",
+    "workspace_private_note"
+  ],
+  "ambiguity_rules": [
+    "Ask for period, organization scope, or plan when omitted."
+  ]
+}

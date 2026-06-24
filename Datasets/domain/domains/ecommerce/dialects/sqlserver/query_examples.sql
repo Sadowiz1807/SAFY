@@ -1,0 +1,1 @@
+SELECT TOP (100) * FROM dbo.{{TABLE_NAME}} ORDER BY created_at DESC;

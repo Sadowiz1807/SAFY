@@ -1,0 +1,12 @@
+{
+  "multi_turn_references": [
+    "cơ hội đó",
+    "các khách hàng vừa nêu",
+    "same opportunities",
+    "only show the top ten"
+  ],
+  "clarification_prompts": [
+    "Bạn muốn kỳ bán hàng nào?",
+    "Which territory or stage should be included?"
+  ]
+}

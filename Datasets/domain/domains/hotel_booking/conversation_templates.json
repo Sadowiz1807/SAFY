@@ -1,0 +1,12 @@
+{
+  "multi_turn_references": [
+    "đặt phòng đó",
+    "các phòng vừa nêu",
+    "same bookings",
+    "only show the top ten"
+  ],
+  "clarification_prompts": [
+    "Bạn muốn khoảng ngày lưu trú nào?",
+    "Which hotel or room type should be included?"
+  ]
+}

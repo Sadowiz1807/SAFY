@@ -1,0 +1,25 @@
+{
+  "task_groups": {
+    "read_only": 900,
+    "write": 300,
+    "ddl": 200,
+    "multi_turn_followup": 200,
+    "clarification_ambiguous": 100,
+    "query_repair": 100,
+    "safety_negative": 200
+  },
+  "analytics": [
+    "revenue_by_period",
+    "best_selling_products",
+    "inventory_shortages",
+    "customer_lifetime_value",
+    "repeat_purchase",
+    "unpaid_orders",
+    "promotion_effectiveness",
+    "return_refund_rate",
+    "warehouse_availability",
+    "shipment_delay",
+    "category_performance",
+    "cohort_retention"
+  ]
+}

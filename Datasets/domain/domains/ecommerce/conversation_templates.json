@@ -1,0 +1,11 @@
+{
+  "multi_turn_references": [
+    "bảng đó",
+    "các đơn vừa nêu",
+    "only show the top ten"
+  ],
+  "clarification_prompts": [
+    "Bạn muốn khoảng thời gian nào?",
+    "Which status should be included?"
+  ]
+}

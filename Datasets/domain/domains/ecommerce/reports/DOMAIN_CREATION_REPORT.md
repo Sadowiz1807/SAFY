@@ -1,0 +1,23 @@
+# Ecommerce Domain Creation Report
+
+- domain: ecommerce
+- from-scratch confirmation: old ecommerce directory was rebuilt from template
+- template checksum: 6d858afe091afe4e08ae0c2a5bce121d40918fbf1e9dfae5afcf071e4ef5da3f
+- files created: generated logical schemas, canonical cases, samples, splits, reports, generator, validator
+- eight schema summaries: schema_01_small=6 tables, schema_02_small=8 tables, schema_03_medium=10 tables, schema_04_medium=12 tables, schema_05_medium=14 tables, schema_06_large=15 tables, schema_07_large=18 tables, schema_08_large=22 tables
+- canonical count: 2000
+- database-specific record count: 12000
+- counts per task group: {'safety_negative': 200, 'write': 300, 'clarification_ambiguous': 100, 'read_only': 900, 'multi_turn_followup': 200, 'ddl': 200, 'query_repair': 100}
+- counts per language: {'vi': 1600, 'en': 400}
+- counts per difficulty: {'easy': 400, 'medium': 800, 'hard': 500, 'expert': 300}
+- counts per schema and split: {('schema_01_small', 'train'): 250, ('schema_02_small', 'train'): 250, ('schema_03_medium', 'train'): 250, ('schema_04_medium', 'train'): 250, ('schema_05_medium', 'train'): 250, ('schema_06_large', 'train'): 250, ('schema_07_large', 'validation'): 250, ('schema_08_large', 'test'): 250}
+- counts per database type: {'sqlite': 2000, 'mysql': 2000, 'postgresql': 2000, 'sqlserver': 2000, 'oracle': 2000, 'supabase_rpc': 2000}
+- risk/route counts: {('DESTRUCTIVE_SQL', 'BLOCK'): 101, ('WRITE_SQL', 'SANDBOX_THEN_REAL'): 300, ('UNKNOWN_RISK', 'CLARIFY'): 200, ('READ_ONLY_SQL', 'DIRECT_READ_ONLY'): 1100, ('SECRET_ACCESS', 'BLOCK'): 99, ('DDL_SQL', 'SANDBOX_THEN_REAL'): 200}
+- unique message count: 2000
+- unique semantic-signature count: 2000
+- unique query-shape count: 500
+- validation level per database: static_only plus not_applicable_blocked; no live database execution attempted
+- duplicate results: canonical_case_id=0, semantic_signature=0, record_id=0, normalized_user_message=0
+- secret scan: clean by automated validator
+- rejection reasons: none
+- unresolved limitations: SQL is representative static SQL and not executed against external engines.

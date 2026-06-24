@@ -1,0 +1,5 @@
+{
+  "database_type": "oracle",
+  "execute_sql": false,
+  "validation_level": "static_only"
+}

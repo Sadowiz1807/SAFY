@@ -1,0 +1,1 @@
+SELECT * FROM public.{{TABLE_NAME}} ORDER BY created_at DESC LIMIT 100;

@@ -1,0 +1,10 @@
+{
+  "database_type": "postgresql",
+  "database_engine": "postgresql",
+  "sql_dialect": "postgres",
+  "driver": "postgresql",
+  "provider": "self_hosted",
+  "execution_transport": "native_driver",
+  "template_only": true,
+  "contains_secret": false
+}

@@ -1,0 +1,978 @@
+{
+  "schema_variant_id": "schema_07_large",
+  "domain": "education",
+  "table_count": 18,
+  "entities": [
+    {
+      "table": "students",
+      "description": "Synthetic education students table.",
+      "columns": [
+        {
+          "name": "student_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for students."
+        },
+        {
+          "name": "student_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for students."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Academic lifecycle status."
+        },
+        {
+          "name": "person_hash",
+          "logical_type": "string",
+          "nullable": true,
+          "sensitive": true,
+          "description": "Hashed synthetic person marker."
+        },
+        {
+          "name": "academic_segment",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic academic segment."
+        }
+      ]
+    },
+    {
+      "table": "teachers",
+      "description": "Synthetic education teachers table.",
+      "columns": [
+        {
+          "name": "teacher_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for teachers."
+        },
+        {
+          "name": "teacher_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for teachers."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Academic lifecycle status."
+        },
+        {
+          "name": "person_hash",
+          "logical_type": "string",
+          "nullable": true,
+          "sensitive": true,
+          "description": "Hashed synthetic person marker."
+        },
+        {
+          "name": "academic_segment",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic academic segment."
+        },
+        {
+          "name": "student_id",
+          "logical_type": "string",
+          "foreign_key": "students.student_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to students."
+        }
+      ]
+    },
+    {
+      "table": "departments",
+      "description": "Synthetic education departments table.",
+      "columns": [
+        {
+          "name": "department_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for departments."
+        },
+        {
+          "name": "department_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for departments."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Academic lifecycle status."
+        },
+        {
+          "name": "teacher_id",
+          "logical_type": "string",
+          "foreign_key": "teachers.teacher_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to teachers."
+        }
+      ]
+    },
+    {
+      "table": "courses",
+      "description": "Synthetic education courses table.",
+      "columns": [
+        {
+          "name": "course_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for courses."
+        },
+        {
+          "name": "course_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for courses."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Academic lifecycle status."
+        },
+        {
+          "name": "department_id",
+          "logical_type": "string",
+          "foreign_key": "departments.department_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to departments."
+        }
+      ]
+    },
+    {
+      "table": "course_prerequisites",
+      "description": "Synthetic education course_prerequisites table.",
+      "columns": [
+        {
+          "name": "course_prerequisite_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for course_prerequisites."
+        },
+        {
+          "name": "course_prerequisite_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for course_prerequisites."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Academic lifecycle status."
+        },
+        {
+          "name": "course_id",
+          "logical_type": "string",
+          "foreign_key": "courses.course_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to courses."
+        }
+      ]
+    },
+    {
+      "table": "classes",
+      "description": "Synthetic education classes table.",
+      "columns": [
+        {
+          "name": "classe_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for classes."
+        },
+        {
+          "name": "classe_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for classes."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Academic lifecycle status."
+        },
+        {
+          "name": "course_prerequisite_id",
+          "logical_type": "string",
+          "foreign_key": "course_prerequisites.course_prerequisite_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to course_prerequisites."
+        }
+      ]
+    },
+    {
+      "table": "class_schedules",
+      "description": "Synthetic education class_schedules table.",
+      "columns": [
+        {
+          "name": "class_schedule_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for class_schedules."
+        },
+        {
+          "name": "class_schedule_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for class_schedules."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Academic lifecycle status."
+        },
+        {
+          "name": "classe_id",
+          "logical_type": "string",
+          "foreign_key": "classes.classe_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to classes."
+        }
+      ]
+    },
+    {
+      "table": "enrollments",
+      "description": "Synthetic education enrollments table.",
+      "columns": [
+        {
+          "name": "enrollment_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for enrollments."
+        },
+        {
+          "name": "enrollment_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for enrollments."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Academic lifecycle status."
+        },
+        {
+          "name": "amount",
+          "logical_type": "decimal",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic financial amount."
+        },
+        {
+          "name": "class_schedule_id",
+          "logical_type": "string",
+          "foreign_key": "class_schedules.class_schedule_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to class_schedules."
+        }
+      ]
+    },
+    {
+      "table": "attendance",
+      "description": "Synthetic education attendance table.",
+      "columns": [
+        {
+          "name": "attendance_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for attendance."
+        },
+        {
+          "name": "attendance_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for attendance."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Academic lifecycle status."
+        },
+        {
+          "name": "score_value",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic academic metric."
+        },
+        {
+          "name": "enrollment_id",
+          "logical_type": "string",
+          "foreign_key": "enrollments.enrollment_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to enrollments."
+        }
+      ]
+    },
+    {
+      "table": "assignments",
+      "description": "Synthetic education assignments table.",
+      "columns": [
+        {
+          "name": "assignment_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for assignments."
+        },
+        {
+          "name": "assignment_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for assignments."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Academic lifecycle status."
+        },
+        {
+          "name": "score_value",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic academic metric."
+        },
+        {
+          "name": "attendance_id",
+          "logical_type": "string",
+          "foreign_key": "attendance.attendance_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to attendance."
+        }
+      ]
+    },
+    {
+      "table": "submissions",
+      "description": "Synthetic education submissions table.",
+      "columns": [
+        {
+          "name": "submission_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for submissions."
+        },
+        {
+          "name": "submission_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for submissions."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Academic lifecycle status."
+        },
+        {
+          "name": "score_value",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic academic metric."
+        },
+        {
+          "name": "assignment_id",
+          "logical_type": "string",
+          "foreign_key": "assignments.assignment_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to assignments."
+        }
+      ]
+    },
+    {
+      "table": "grades",
+      "description": "Synthetic education grades table.",
+      "columns": [
+        {
+          "name": "grade_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for grades."
+        },
+        {
+          "name": "grade_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for grades."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Academic lifecycle status."
+        },
+        {
+          "name": "score_value",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic academic metric."
+        },
+        {
+          "name": "submission_id",
+          "logical_type": "string",
+          "foreign_key": "submissions.submission_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to submissions."
+        }
+      ]
+    },
+    {
+      "table": "semesters",
+      "description": "Synthetic education semesters table.",
+      "columns": [
+        {
+          "name": "semester_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for semesters."
+        },
+        {
+          "name": "semester_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for semesters."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Academic lifecycle status."
+        },
+        {
+          "name": "grade_id",
+          "logical_type": "string",
+          "foreign_key": "grades.grade_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to grades."
+        }
+      ]
+    },
+    {
+      "table": "programs",
+      "description": "Synthetic education programs table.",
+      "columns": [
+        {
+          "name": "program_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for programs."
+        },
+        {
+          "name": "program_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for programs."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Academic lifecycle status."
+        },
+        {
+          "name": "semester_id",
+          "logical_type": "string",
+          "foreign_key": "semesters.semester_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to semesters."
+        }
+      ]
+    },
+    {
+      "table": "campuses",
+      "description": "Synthetic education campuses table.",
+      "columns": [
+        {
+          "name": "campuse_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for campuses."
+        },
+        {
+          "name": "campuse_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for campuses."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Academic lifecycle status."
+        },
+        {
+          "name": "program_id",
+          "logical_type": "string",
+          "foreign_key": "programs.program_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to programs."
+        }
+      ]
+    },
+    {
+      "table": "classrooms",
+      "description": "Synthetic education classrooms table.",
+      "columns": [
+        {
+          "name": "classroom_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for classrooms."
+        },
+        {
+          "name": "classroom_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for classrooms."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Academic lifecycle status."
+        },
+        {
+          "name": "campuse_id",
+          "logical_type": "string",
+          "foreign_key": "campuses.campuse_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to campuses."
+        }
+      ]
+    },
+    {
+      "table": "advisors",
+      "description": "Synthetic education advisors table.",
+      "columns": [
+        {
+          "name": "advisor_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for advisors."
+        },
+        {
+          "name": "advisor_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for advisors."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Academic lifecycle status."
+        },
+        {
+          "name": "person_hash",
+          "logical_type": "string",
+          "nullable": true,
+          "sensitive": true,
+          "description": "Hashed synthetic person marker."
+        },
+        {
+          "name": "academic_segment",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic academic segment."
+        },
+        {
+          "name": "classroom_id",
+          "logical_type": "string",
+          "foreign_key": "classrooms.classroom_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to classrooms."
+        }
+      ]
+    },
+    {
+      "table": "exams",
+      "description": "Synthetic education exams table.",
+      "columns": [
+        {
+          "name": "exam_id",
+          "logical_type": "string",
+          "primary_key": true,
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic identifier for exams."
+        },
+        {
+          "name": "exam_code",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic business code for exams."
+        },
+        {
+          "name": "created_at",
+          "logical_type": "timestamp",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic creation timestamp."
+        },
+        {
+          "name": "status",
+          "logical_type": "string",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Academic lifecycle status."
+        },
+        {
+          "name": "score_value",
+          "logical_type": "integer",
+          "nullable": false,
+          "sensitive": false,
+          "description": "Synthetic academic metric."
+        },
+        {
+          "name": "advisor_id",
+          "logical_type": "string",
+          "foreign_key": "advisors.advisor_id",
+          "nullable": true,
+          "sensitive": false,
+          "description": "Optional relationship to advisors."
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "from_table": "teachers",
+      "from_column": "student_id",
+      "to_table": "students",
+      "to_column": "student_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "departments",
+      "from_column": "teacher_id",
+      "to_table": "teachers",
+      "to_column": "teacher_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "courses",
+      "from_column": "department_id",
+      "to_table": "departments",
+      "to_column": "department_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "course_prerequisites",
+      "from_column": "course_id",
+      "to_table": "courses",
+      "to_column": "course_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "classes",
+      "from_column": "course_prerequisite_id",
+      "to_table": "course_prerequisites",
+      "to_column": "course_prerequisite_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "class_schedules",
+      "from_column": "classe_id",
+      "to_table": "classes",
+      "to_column": "classe_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "enrollments",
+      "from_column": "class_schedule_id",
+      "to_table": "class_schedules",
+      "to_column": "class_schedule_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "attendance",
+      "from_column": "enrollment_id",
+      "to_table": "enrollments",
+      "to_column": "enrollment_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "assignments",
+      "from_column": "attendance_id",
+      "to_table": "attendance",
+      "to_column": "attendance_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "submissions",
+      "from_column": "assignment_id",
+      "to_table": "assignments",
+      "to_column": "assignment_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "grades",
+      "from_column": "submission_id",
+      "to_table": "submissions",
+      "to_column": "submission_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "semesters",
+      "from_column": "grade_id",
+      "to_table": "grades",
+      "to_column": "grade_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "programs",
+      "from_column": "semester_id",
+      "to_table": "semesters",
+      "to_column": "semester_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "campuses",
+      "from_column": "program_id",
+      "to_table": "programs",
+      "to_column": "program_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "classrooms",
+      "from_column": "campuse_id",
+      "to_table": "campuses",
+      "to_column": "campuse_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "advisors",
+      "from_column": "classroom_id",
+      "to_table": "classrooms",
+      "to_column": "classroom_id",
+      "type": "many_to_one"
+    },
+    {
+      "from_table": "exams",
+      "from_column": "advisor_id",
+      "to_table": "advisors",
+      "to_column": "advisor_id",
+      "type": "many_to_one"
+    }
+  ]
+}

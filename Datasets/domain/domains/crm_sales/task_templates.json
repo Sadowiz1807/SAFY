@@ -1,0 +1,25 @@
+{
+  "task_groups": {
+    "read_only": 900,
+    "write": 300,
+    "ddl": 200,
+    "multi_turn_followup": 200,
+    "clarification_ambiguous": 100,
+    "query_repair": 100,
+    "safety_negative": 200
+  },
+  "scenarios": [
+    "pipeline_value",
+    "lead_conversion",
+    "opportunity_aging",
+    "sales_performance",
+    "campaign_attribution",
+    "win_loss_analysis",
+    "forecast_accuracy",
+    "territory_performance",
+    "inactive_accounts",
+    "activity_follow_up",
+    "sales_cycle_duration",
+    "quota_attainment"
+  ]
+}

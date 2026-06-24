@@ -1,0 +1,8 @@
+{
+  "provider": "aws_aurora",
+  "database_type": "postgresql",
+  "engine": "postgresql",
+  "dialect": "postgres",
+  "template_only": true,
+  "contains_secret": false
+}

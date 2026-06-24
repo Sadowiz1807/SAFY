@@ -53,7 +53,7 @@ In scope:
 - Manual SQL Console as user-driven execution path with confirmation, SQL Guard, audit, and profile policy.
 - Runtime SQLite DB and audit SQLite DB.
 - User/database profile JSON files that store env variable names, not raw secrets.
-- Create_database, text_to_sql, read_schema, and explain_query skill behavior.
+- create_database, text_to_sql, schema_graph, and query_explain skill behavior.
 
 ## 5. Out of Scope
 Out of scope for v1.0.0:

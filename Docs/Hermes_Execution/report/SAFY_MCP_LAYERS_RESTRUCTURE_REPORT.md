@@ -52,7 +52,7 @@ SAFY can now remember a pending workflow across chat turns. Example:
   - `command_router`
   - `database_context`
   - `schema_graph`
-  - `text_to_query`
+  - `text_to_sql`
   - `query_guard`
   - `execute_box`
   - `execute_query`

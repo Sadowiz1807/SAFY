@@ -1,0 +1,11 @@
+{
+  "database_type": "postgresql",
+  "database_engine": "postgresql",
+  "sql_dialect": "postgres",
+  "provider": "self_hosted",
+  "execution_transport": "native_driver",
+  "driver": "postgresql",
+  "identity_syntax": "native identity",
+  "pagination_syntax": "LIMIT",
+  "validation_method": "static_only"
+}
