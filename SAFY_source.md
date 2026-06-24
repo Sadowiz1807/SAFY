@@ -18,13 +18,13 @@
 ### API and application composition
 
 - `Apps/Api/safy_api/main.py`: FastAPI routes, auth/profile lifecycle, context fetch boundary, agent APIs, query check/execute APIs, sandbox APIs, and Schema Graph APIs.
-- `Apps/Api/safy_api/schemas.py`: API request models.
+- `Apps/Api/safy_api/schemas.py`: API request models, including the unified all-database `DatabaseProfilePayload` contract.
 - `Apps/Api/safy_api/cli.py`: `safy run` and CLI behavior.
 
 ### Web UI
 
 - `Apps/Web/login.html` + `Apps/Web/login.js`: login page.
-- `Apps/Web/dashboard.html` + `Apps/Web/dashboard.js`: dashboard, chat, profile controls, context sources, Execute Box, and sidebar behavior.
+- `Apps/Web/dashboard.html` + `Apps/Web/dashboard.js`: dashboard, chat, compact Type Database-aware connection fields without per-field description text, read-only SAFY-login database username mapping, unified database payload construction, profile controls, context sources, Execute Box, and sidebar behavior.
 - `Apps/Web/schema-graph.html` + `Apps/Web/schema-graph.js`: dedicated Schema Graph implementation served at `/Dashboard/{schema_ui_name}`, replacing the Dashboard view while preserving browser Back navigation; owns grid rendering, node dragging, relationship redraw, pan, and cursor-centered zoom.
 - `Apps/Web/styles.css`: shared UI styles.
 - `Apps/Web/index.html`: compatibility redirect to login.
@@ -61,7 +61,8 @@
 - `State/`: session/runtime persistence and sanitized workflow state.
 - `Audit/`: audit schema/store/logger.
 - `Logging/redact.py`: redaction boundary.
-- `DataStore/`: profile, environment secret reference, and Schema Graph persistence.
+- `DataStore/profile_store.py`: authoritative database-type classification and structured connection-field normalization. For native password-authenticated databases, API/runtime layers intentionally map the database username to the authenticated SAFY login username; Supabase API/RPC, SQLite, and SQL Server Windows Authentication are exceptions.
+- `DataStore/`: environment secret references, profile persistence, and Schema Graph persistence.
 
 ### Skills and tools
 

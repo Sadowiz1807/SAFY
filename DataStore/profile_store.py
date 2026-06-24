@@ -58,77 +58,192 @@ def _reject_raw_secrets(profile: dict[str, Any], *, allow_raw_secret: bool = Fal
             raise ProfileStoreError("SECRET_VALUE_REJECTED", "Raw secret values must not be stored in profiles.")
 
 
-def _normalize_database_base_url(profile: dict[str, Any]) -> dict[str, Any]:
-    """Map the simplified UI Base URL into backend database fields.
+DATABASE_TYPE_ALIASES = {
+    "postgres": "postgresql",
+    "postgresql": "postgresql",
+    "aurora_postgresql": "postgresql",
+    "supabase": "supabase_rpc",
+    "supabase_api": "supabase_rpc",
+    "supabase_rest": "supabase_rpc",
+    "supabase_rpc": "supabase_rpc",
+    "mysql": "mysql",
+    "mariadb": "mysql",
+    "aurora_mysql": "mysql",
+    "sqlite": "sqlite",
+    "sql_server": "sqlserver",
+    "sqlserver": "sqlserver",
+    "mssql": "sqlserver",
+    "oracle": "oracle",
+}
 
-    This keeps the UI simple while preserving the older driver fields used by
-    provider resolution and query/test code.
+DATABASE_DEFAULT_PORTS = {
+    "postgresql": 5432,
+    "supabase_rpc": 443,
+    "mysql": 3306,
+    "sqlite": 0,
+    "sqlserver": 1433,
+    "oracle": 1521,
+}
+
+
+def _nonempty(value: Any) -> str:
+    return str(value).strip() if value not in (None, "") else ""
+
+
+def _infer_database_type(profile: dict[str, Any]) -> str:
+    requested = _nonempty(
+        profile.get("database_type")
+        or profile.get("driver")
+        or profile.get("dbms")
+        or profile.get("engine")
+    ).lower()
+    if requested:
+        canonical = DATABASE_TYPE_ALIASES.get(requested, requested)
+        if canonical in DATABASE_DEFAULT_PORTS:
+            return canonical
+
+    base_url = _nonempty(profile.get("base_url"))
+    lowered = base_url.lower()
+    if "supabase.co" in lowered and not lowered.startswith(("postgres://", "postgresql://")):
+        return "supabase_rpc"
+    if lowered.startswith(("postgres://", "postgresql://")):
+        return "postgresql"
+    if lowered.startswith(("mysql://", "mariadb://")):
+        return "mysql"
+    if lowered.startswith("sqlite://") or lowered.endswith((".sqlite", ".db")):
+        return "sqlite"
+    if lowered.startswith(("sqlserver://", "mssql://")):
+        return "sqlserver"
+    if lowered.startswith("oracle://"):
+        return "oracle"
+    return "postgresql"
+
+
+def normalize_database_connection_payload(profile: dict[str, Any]) -> dict[str, Any]:
+    """Classify and normalize the unified database-profile JSON contract.
+
+    Structured fields are authoritative. ``base_url`` is parsed only to fill
+    missing fields and to keep older clients compatible.
     """
-    base_url = (profile.get("base_url") or "").strip()
-    if not base_url:
-        return profile
+    normalized = dict(profile)
+    database_type = _infer_database_type(normalized)
+    normalized["database_type"] = database_type
+    normalized["driver"] = database_type
+    normalized["dbms"] = database_type
+    normalized["engine"] = database_type
 
-    parsed = urlparse(base_url)
-    scheme = (parsed.scheme or "").lower()
-    hostname = parsed.hostname or profile.get("host") or ""
-    port = parsed.port
-    path_database = (parsed.path or "").strip("/")
+    provider = _nonempty(normalized.get("provider")).lower()
+    if provider in {"", "unified", "direct"}:
+        provider = "supabase" if database_type == "supabase_rpc" else "self_hosted"
+    normalized["provider"] = provider
 
-    provider = (profile.get("provider") or "").strip().lower()
-    is_supabase = "supabase.co" in hostname or provider == "supabase"
-    is_supabase_api = is_supabase and (not scheme.startswith("postgres") and not scheme.startswith("mysql") and not scheme.startswith("sqlite") and not scheme.startswith("mssql") and not scheme.startswith("sqlserver") and not scheme.startswith("oracle"))
-    if provider in {"", "unified"}:
-        provider = "supabase" if is_supabase else "self_hosted"
-        profile["provider"] = provider
-    if is_supabase_api:
-        # Supabase API/RPC is a distinct database kind in SAFY. It uses baseURL
-        # + API key and does not share PostgreSQL direct username/password logic.
-        profile["driver"] = "supabase_rpc"
-        profile["dbms"] = "supabase_rpc"
-        profile["connection_kind"] = "supabase_rpc"
-        profile["execution_transport"] = "postgrest_rpc"
-        if base_url and "/rest/v1" not in base_url:
-            profile["base_url"] = base_url.rstrip("/") + "/rest/v1"
-        if hostname and not profile.get("host"):
-            profile["host"] = hostname
-        if not profile.get("port"):
-            profile["port"] = 443
-        if not profile.get("database") or str(profile.get("database")).lower() in {"rest/v1", "rest/v1/", ""}:
-            profile["database"] = "supabase_api"
-        if not profile.get("username"):
-            profile["username"] = "supabase_api"
-        if not profile.get("sql_rpc_function"):
-            profile["sql_rpc_function"] = "safy_execute_sql"
+    base_url = _nonempty(normalized.get("base_url"))
+    parsed = None
+    if base_url and database_type != "sqlite":
+        try:
+            parsed = urlparse(base_url)
+        except Exception:
+            parsed = None
 
-    if "driver" not in profile and "dbms" not in profile:
-        if scheme.startswith("mysql"):
-            profile["driver"] = "mysql"
-        elif scheme.startswith("sqlite"):
-            profile["driver"] = "sqlite"
+    if database_type == "supabase_rpc":
+        normalized["provider"] = "supabase"
+        normalized["connection_kind"] = "supabase_rpc"
+        normalized["execution_transport"] = "postgrest_rpc"
+        normalized["authentication"] = "api_key"
+        normalized["secret_kind"] = "api_key"
+        if base_url:
+            normalized_url = base_url if "://" in base_url else f"https://{base_url}"
+            parsed = urlparse(normalized_url)
+            host = parsed.hostname or ""
+            normalized["host"] = _nonempty(normalized.get("host")) or host
+            path = (parsed.path or "").rstrip("/")
+            if path.lower().endswith("/rest/v1"):
+                normalized["base_url"] = normalized_url.rstrip("/")
+            else:
+                normalized["base_url"] = normalized_url.rstrip("/") + "/rest/v1"
+        normalized["port"] = int(normalized.get("port") or 443)
+        normalized["database"] = "supabase_api"
+        normalized["username"] = "supabase_api"
+        normalized["ssl_mode"] = "api"
+        normalized["sql_rpc_function"] = _nonempty(normalized.get("sql_rpc_function")) or "safy_execute_sql"
+        normalized["sql_rpc_argument"] = _nonempty(normalized.get("sql_rpc_argument")) or "sql_text"
+        return normalized
+
+    normalized.setdefault("connection_kind", "native_sql")
+    normalized.setdefault("execution_transport", "native_driver")
+
+    if database_type == "sqlite":
+        sqlite_path = _nonempty(normalized.get("sqlite_path") or normalized.get("database") or base_url)
+        if sqlite_path.lower().startswith("sqlite://"):
+            sqlite_path = sqlite_path[9:]
+        normalized["sqlite_path"] = sqlite_path
+        normalized["database"] = sqlite_path
+        normalized["base_url"] = f"sqlite://{sqlite_path}" if sqlite_path else ""
+        normalized["host"] = "local_file"
+        normalized["port"] = 0
+        normalized["username"] = ""
+        normalized["authentication"] = "none"
+        normalized["secret_kind"] = "none"
+        normalized["trusted_connection"] = False
+        return normalized
+
+    # URL-derived values only fill missing structured fields.
+    if parsed and parsed.hostname:
+        normalized["host"] = _nonempty(normalized.get("host")) or parsed.hostname
+        if normalized.get("port") in (None, "", 0) and parsed.port:
+            normalized["port"] = parsed.port
+        if not _nonempty(normalized.get("database")):
+            normalized["database"] = (parsed.path or "").strip("/")
+
+    normalized["host"] = _nonempty(normalized.get("host")) or "localhost"
+    raw_port = normalized.get("port")
+    if database_type == "sqlserver" and _nonempty(normalized.get("instance")) and raw_port in (None, "", 0, "0"):
+        normalized["port"] = 0
+    else:
+        normalized["port"] = int(raw_port or DATABASE_DEFAULT_PORTS[database_type])
+
+    if database_type == "sqlserver":
+        auth = _nonempty(normalized.get("authentication")).lower()
+        if auth in {"windows", "trusted", "trusted_connection", "integrated", "integrated_security"} or bool(normalized.get("trusted_connection")):
+            auth = "windows"
+            normalized["trusted_connection"] = True
+            normalized["username"] = ""
+            normalized["secret_kind"] = "none"
         else:
-            profile["driver"] = "postgresql"
+            auth = "sql_server"
+            normalized["trusted_connection"] = False
+            normalized["secret_kind"] = "password"
+        normalized["authentication"] = auth
+        normalized["instance"] = _nonempty(normalized.get("instance"))
+        normalized["encrypt"] = bool(normalized.get("encrypt", True))
+        normalized["trust_server_certificate"] = bool(normalized.get("trust_server_certificate", False))
+        normalized["odbc_driver"] = _nonempty(normalized.get("odbc_driver")) or "ODBC Driver 18 for SQL Server"
+    elif database_type == "oracle":
+        service_name = _nonempty(normalized.get("service_name"))
+        sid = _nonempty(normalized.get("sid"))
+        database = _nonempty(normalized.get("database"))
+        if not service_name and not sid:
+            service_name = database
+        normalized["service_name"] = service_name
+        normalized["sid"] = sid
+        normalized["database"] = database or service_name or sid
+        normalized["authentication"] = "password"
+        normalized["secret_kind"] = "password"
+    else:
+        normalized["authentication"] = "password"
+        normalized["secret_kind"] = "password"
+        normalized["ssl_mode"] = _nonempty(normalized.get("ssl_mode")) or "preferred"
 
-    driver = (profile.get("dbms") or profile.get("driver") or ("supabase_rpc" if provider == "supabase" else "postgresql")).lower()
-    if driver == "postgres":
-        driver = "postgresql"
-    profile["driver"] = driver
-    profile["dbms"] = driver
+    if not base_url:
+        scheme = {"postgresql": "postgresql", "mysql": "mysql", "sqlserver": "sqlserver", "oracle": "oracle"}[database_type]
+        database = _nonempty(normalized.get("database") or normalized.get("service_name") or normalized.get("sid"))
+        normalized["base_url"] = f"{scheme}://{normalized['host']}:{normalized['port']}/{database}"
+    return normalized
 
-    if driver == "sqlite":
-        if path_database and not profile.get("database"):
-            profile["database"] = path_database
-        return profile
 
-    if hostname and not profile.get("host"):
-        profile["host"] = hostname
-    if port and not profile.get("port"):
-        profile["port"] = port
-    if not profile.get("port"):
-        profile["port"] = 3306 if driver == "mysql" else 5432
-    if path_database and not profile.get("database"):
-        profile["database"] = path_database
-    return profile
-
+def _normalize_database_base_url(profile: dict[str, Any]) -> dict[str, Any]:
+    """Backward-compatible alias for unified connection classification."""
+    return normalize_database_connection_payload(profile)
 
 def _normalize_database_raw_secret(profile: dict[str, Any]) -> dict[str, Any]:
     env_var = (profile.get("secret_env") or profile.get("api_key_env") or profile.get("password_env") or "")
@@ -220,6 +335,31 @@ class JsonProfileStore:
         write_json_atomic(self.path, {"schema_version": 1, "profiles": profiles})
         return normalized
 
+    def activate(self, profile_id: str) -> dict[str, Any]:
+        if self.profile_type != "database":
+            raise ProfileStoreError("UNSUPPORTED_OPERATION", "activate() is only supported for database profiles in this store.")
+        data = load_json(self.path) if self.path.exists() else {"schema_version": 1, "profiles": []}
+        profiles = [dict(item) for item in data.get("profiles", [])]
+        target_index = next((idx for idx, item in enumerate(profiles) if item.get("profile_id") == profile_id and (item.get("profile_type") in {None, "database"})), None)
+        if target_index is None:
+            raise ProfileStoreError("PROFILE_NOT_FOUND", f"Profile not found: {profile_id}")
+        stamp = now_iso()
+        activated: dict[str, Any] | None = None
+        next_profiles: list[dict[str, Any]] = []
+        for item in profiles:
+            next_item = dict(item)
+            if next_item.get("profile_type") in {None, "database"}:
+                is_target = next_item.get("profile_id") == profile_id
+                next_item["active"] = is_target
+                next_item["activation_generation"] = int(next_item.get("activation_generation") or 0) + (1 if is_target else 0)
+                next_item["context_generation"] = int(next_item.get("context_generation") or 0) + (1 if is_target else 0)
+                next_item["updated_at"] = stamp
+                if is_target:
+                    activated = self._normalize(next_item, for_write=False)
+            next_profiles.append(next_item)
+        write_json_atomic(self.path, {"schema_version": data.get("schema_version", 1), "profiles": next_profiles})
+        return activated or self.get(profile_id)
+
     def _normalize(self, profile: dict[str, Any], for_write: bool = False) -> dict[str, Any]:
         if self.profile_type == "database":
             profile = _normalize_database_raw_secret(profile)
@@ -247,15 +387,31 @@ class JsonProfileStore:
             except DriverError as exc:
                 raise ProfileStoreError(exc.error_code, str(exc), exc.details) from exc
             profile.setdefault("real_db_readonly", False)
+            database_type = str(profile.get("database_type") or profile.get("dbms") or "").lower()
 
-            if str(profile.get("dbms", "")).lower() == "sqlite":
+            if database_type == "sqlite":
                 profile.setdefault("host", "local_file")
                 profile.setdefault("port", 0)
                 profile.setdefault("username", "")
                 profile.setdefault("password_env", "")
                 _require(profile, ["profile_id", "display_name", "dbms", "database", "user_query_access_mode", "created_at", "updated_at"])
+            elif database_type == "supabase_rpc":
+                _require(profile, ["profile_id", "display_name", "dbms", "base_url", "host", "port", "database", "user_query_access_mode", "created_at", "updated_at"])
+                if profile.get("password_mode") == "env" or profile.get("secret_mode") == "env":
+                    _require(profile, ["secret_env"])
+            elif database_type == "sqlserver" and profile.get("authentication") == "windows":
+                _require(profile, ["profile_id", "display_name", "dbms", "host", "database", "user_query_access_mode", "created_at", "updated_at"])
+                profile["username"] = ""
+                profile["password_mode"] = "none"
+                profile["secret_mode"] = "none"
+                profile["password_env"] = ""
+                profile["api_key_env"] = ""
+                profile["secret_env"] = ""
+                profile["has_raw_secret"] = False
             else:
                 required = ["profile_id", "display_name", "dbms", "host", "port", "database", "username", "user_query_access_mode", "created_at", "updated_at"]
+                if database_type == "oracle" and not (profile.get("service_name") or profile.get("sid") or profile.get("database")):
+                    raise ProfileStoreError("VALIDATION_ERROR", "Oracle service_name or sid is required.")
                 if profile.get("password_mode") == "env":
                     required.append("password_env")
                 elif profile.get("password_mode") == "raw_secret":

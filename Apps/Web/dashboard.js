@@ -61,11 +61,35 @@ function friendlyErrorMessage(code, message) {
   if (codeText === 'DESTRUCTIVE_SQL_BLOCKED') {
     return 'DROP and TRUNCATE are blocked by SAFY policy. Use a separately reviewed migration or administrative workflow.';
   }
+  if (/QUERY_CHECK_CONTEXT_STALE|CONTEXT_STALE/i.test(codeText)) {
+    return 'The database or session context changed after Check Safety. Run Check Safety again.';
+  }
+  if (/QUERY_CHECK_SCHEMA_STALE|SCHEMA_GENERATION_STALE/i.test(codeText)) {
+    return 'Schema Graph changed after Check Safety. Refresh the SQL draft and run Check Safety again.';
+  }
+  if (/QUERY_CHECK_PROFILE_MISMATCH|PROFILE_MISMATCH|QUERY_CHECK_TARGET_MISMATCH|TARGET_MISMATCH/i.test(codeText)) {
+    return 'The selected database target no longer matches the safety check. Select the intended database and check again.';
+  }
+  if (/QUERY_CHECK_DRIVER_MISMATCH|QUERY_CHECK_DIALECT_MISMATCH|DIALECT_MISMATCH/i.test(codeText)) {
+    return 'The database driver or SQL dialect changed after Check Safety. Regenerate and check the SQL again.';
+  }
+  if (/SEMANTIC_PLAN_INCOHERENT|AMBIGUOUS_INTENT/i.test(codeText)) {
+    return 'SAFY could not form a coherent database action plan. Clarify the intended operation and target table.';
+  }
+  if (/INTENT_SQL_TARGET_UNRESOLVED|SCHEMA_REQUIRED|SCHEMA_TARGET_NOT_FOUND/i.test(codeText)) {
+    return 'SAFY could not verify the SQL target against Schema Graph. Refresh Schema Graph and regenerate the SQL.';
+  }
+  if (/SQLSERVER_SYSTEM_DATABASE_GROUNDING_BLOCKED/i.test(codeText)) {
+    return 'SQL Server master/model/msdb/tempdb cannot be used as the application Schema Graph. Select an application database.';
+  }
   if (codeText === 'TRANSACTION_CONTROL_BLOCKED') {
     return 'BEGIN, COMMIT, and ROLLBACK are managed by SAFY and cannot be submitted in the Execute Box. Submit the DDL/DML statement itself.';
   }
   if (/SANDBOX_VALIDATION_FAILED/i.test(codeText)) {
     return text || 'The SQL failed inside the isolated sandbox. Fix the SQL or schema reference, then run Check Safety again.';
+  }
+  if (/SANDBOX_SCHEMA_NOT_READY/i.test(codeText)) {
+    return 'The sandbox schema is not ready for SQL that references existing tables. Restore or refresh the sandbox schema first.';
   }
   if (/SANDBOX_NOT_READY|SANDBOX_MANAGER_UNAVAILABLE|SANDBOX_NOT_FOUND/i.test(codeText)) {
     return 'The isolated sandbox is not ready. Save or reconnect the database so SAFY can prepare it.';
@@ -82,8 +106,20 @@ function friendlyErrorMessage(code, message) {
   if (codeText === 'DATABASE_PERMISSION_MODE_INVALID') {
     return 'The saved database access mode is invalid. Re-save the database profile with a supported mode.';
   }
-  if (/SUPABASE_REST_SQL_UNSUPPORTED/i.test(codeText)) {
-    return 'Supabase REST can only execute simple read-only SELECT drafts. Edit the SQL to SELECT columns FROM table with optional WHERE/ORDER/LIMIT.';
+  if (/SUPABASE_COMPLEX_READ_RPC_REQUIRED|SUPABASE_READ_RPC_NOT_CONFIGURED/i.test(codeText)) {
+    return 'Supabase API mode cannot run this complex read through REST. Configure a read RPC or use the native PostgreSQL profile for JOIN, aggregate, CTE, or subquery reads.';
+  }
+  if (/SUPABASE_READ_RPC_FAILED/i.test(codeText)) {
+    return 'Supabase read RPC failed. Check the configured read RPC function and SQL, then retry.';
+  }
+  if (/SUPABASE_WRITE_RPC_NOT_CONFIGURED|SUPABASE_RPC_NOT_INSTALLED/i.test(codeText)) {
+    return 'Supabase write RPC is not configured. User-controlled DDL/DML requires the approved SQL RPC before Execute can run.';
+  }
+  if (/SUPABASE_WRITE_RPC_FAILED|SUPABASE_RPC_EXECUTION_FAILED/i.test(codeText)) {
+    return 'Supabase write RPC failed during checked execution. Review the SQL and RPC error without exposing secrets.';
+  }
+  if (/SUPABASE_REST_SQL_UNSUPPORTED|SUPABASE_SQL_REQUIRES_RPC/i.test(codeText)) {
+    return 'Supabase REST can only execute simple read-only SELECT drafts. Complex reads need read RPC or a native PostgreSQL profile.';
   }
   if (/DB_RESOURCE_NOT_FOUND|DB_TABLE_NOT_FOUND/i.test(codeText)) {
     return 'The generated SQL references a table or endpoint that was not found. Refresh Schema Graph, then regenerate or edit the table name.';
@@ -109,13 +145,20 @@ function suggestedNextAction(code, message) {
   const text = `${code} ${message}`;
   if (/SQL_POLICY_BLOCKED/i.test(text)) return 'Remove explanatory prose and any administrative or unsupported statements, then run Check Safety again.';
   if (/DESTRUCTIVE_SQL_BLOCKED/i.test(text)) return 'Use a separately reviewed migration or administrative workflow; do not retry DROP/TRUNCATE in the Execute Box.';
+  if (/QUERY_CHECK_CONTEXT_STALE|QUERY_CHECK_SCHEMA_STALE|QUERY_CHECK_PROFILE_MISMATCH|QUERY_CHECK_TARGET_MISMATCH|QUERY_CHECK_DRIVER_MISMATCH|QUERY_CHECK_DIALECT_MISMATCH/i.test(text)) return 'Run Check Safety again using the current database, schema, driver, and SQL draft.';
+  if (/SEMANTIC_PLAN_INCOHERENT|AMBIGUOUS_INTENT/i.test(text)) return 'Clarify the exact database operation and target object.';
+  if (/INTENT_SQL_TARGET_UNRESOLVED|SCHEMA_REQUIRED|SCHEMA_TARGET_NOT_FOUND/i.test(text)) return 'Refresh Schema Graph, then regenerate the SQL draft.';
+  if (/SQLSERVER_SYSTEM_DATABASE_GROUNDING_BLOCKED/i.test(text)) return 'Select a non-system SQL Server application database, then refresh Schema Graph.';
   if (/TRANSACTION_CONTROL_BLOCKED/i.test(text)) return 'Remove BEGIN/COMMIT/ROLLBACK and submit only the intended SQL statement.';
   if (/SANDBOX_VALIDATION_FAILED/i.test(text)) return 'Fix the SQL or referenced schema object, then run Check Safety again.';
+  if (/SANDBOX_SCHEMA_NOT_READY/i.test(text)) return 'Restore or refresh the sandbox schema, then run Check Safety again.';
   if (/SANDBOX_NOT_READY|SANDBOX_MANAGER_UNAVAILABLE|SANDBOX_NOT_FOUND/i.test(text)) return 'Save or reconnect the database so SAFY can create or repair the isolated sandbox.';
   if (/DATABASE_PROFILE_REQUIRED|PROFILE_NOT_FOUND/i.test(text)) return 'Save and select the intended database profile, then run Check Safety again.';
   if (/DATABASE_ACCESS_DISABLED/i.test(text)) return 'Edit the saved database profile and enable query execution before retrying.';
   if (/DATABASE_READ_ONLY/i.test(text)) return 'Use a SELECT statement, or explicitly change the saved database profile access mode.';
   if (/DATABASE_PERMISSION_MODE_INVALID/i.test(text)) return 'Re-save the database profile with credential_permissions, read_only, or disabled.';
+  if (/SUPABASE_COMPLEX_READ_RPC_REQUIRED|SUPABASE_READ_RPC_NOT_CONFIGURED|SUPABASE_WRITE_RPC_NOT_CONFIGURED/i.test(text)) return 'Configure the approved Supabase RPC, or use a native PostgreSQL profile for this operation.';
+  if (/SUPABASE_READ_RPC_FAILED|SUPABASE_WRITE_RPC_FAILED/i.test(text)) return 'Review the redacted RPC error and verify the configured function before retrying.';
   if (/SUPABASE_REST_SQL_UNSUPPORTED|DB_RESOURCE_NOT_FOUND|DB_TABLE_NOT_FOUND/i.test(text)) return 'Refresh Schema Graph, regenerate the SQL draft, or edit the table name before running Check Safety again.';
   if (/SECRET_VALUE_REJECTED/i.test(text)) return 'Re-enter the key so SAFY can move it to .env, then save again.';
   if (/DB_AUTH_FAILED|DB_SECRET_MISSING|DB_SECRET_ENV_INVALID|credential|password|secret/i.test(text)) return 'Verify Base URL/API Key and make sure backend accepts the selected secret mode.';
@@ -399,6 +442,7 @@ async function ensureActiveSandbox() {
 
 function applyDatabaseWorkflowResult(data, successMessage) {
   if (!data) return;
+  resetExecuteContext({ clearSql: true, reason: 'database_profile_changed' });
   safyDatabaseProfile = {
     ...(safyDatabaseProfile || {}),
     ...data,
@@ -460,7 +504,7 @@ function hideNormalizedError() {
   if (box) box.style.display = 'none';
 }
 
-function resetExecuteRuntimePanel({ clearSql = false } = {}) {
+function resetExecuteContext({ clearSql = false, reason = 'context_changed' } = {}) {
   safyCurrentCheck = null;
   if (clearSql) {
     const input = document.getElementById('user-query-input');
@@ -479,6 +523,12 @@ function resetExecuteRuntimePanel({ clearSql = false } = {}) {
   const execute = document.getElementById('execute-query-btn');
   execute?.setAttribute('disabled', 'disabled');
   execute?.classList.add('disabled');
+  const marker = document.getElementById('execute-context-reset-reason');
+  if (marker) marker.textContent = reason;
+}
+
+function resetExecuteRuntimePanel({ clearSql = false } = {}) {
+  resetExecuteContext({ clearSql, reason: 'runtime_reset' });
 }
 
 function parseDatabaseMode(profile) {
@@ -785,14 +835,11 @@ function setStoredSafyUser(username) {
 function applySafyRuntimeUser(username, profile = {}) {
   safyRuntimeUsername = String(username || '').trim();
   safyUserProfile = { ...(safyUserProfile || {}), ...(profile || {}), username: safyRuntimeUsername };
+  syncDatabaseUsernameField();
 
   const label = document.getElementById('current-user-label');
   if (label) label.textContent = safyRuntimeUsername || 'Not signed in';
 
-  const dbUsername = document.getElementById('db-username');
-  if (dbUsername && safyRuntimeUsername) {
-    dbUsername.value = safyRuntimeUsername;
-  }
 }
 
 
@@ -865,6 +912,7 @@ async function deleteActiveSchemaGraph() {
   hideNormalizedError();
   try {
     await apiRequest('/schema-graph/active', { method: 'DELETE' });
+    resetExecuteContext({ clearSql: true, reason: 'schema_graph_deleted' });
     await updateSchemaLaunchHint();
     showToast('Active database schema graph deleted.', 'success');
   } catch (error) {
@@ -876,6 +924,7 @@ async function resetAllSchemaGraphs() {
   hideNormalizedError();
   try {
     await apiRequest('/schema-graph', { method: 'DELETE' });
+    resetExecuteContext({ clearSql: true, reason: 'schema_graph_reset' });
     await updateSchemaLaunchHint();
     showToast('All stored schema graphs deleted.', 'success');
   } catch (error) {
@@ -1110,26 +1159,55 @@ function closeDatabaseConfig() { setPanel('database', false); }
 
 function syncDatabaseFields() {
   const profile = safyDatabaseProfile;
-  const nameField = document.getElementById('db-profile-name');
-  const baseUrlField = document.getElementById('db-base-url');
-  const apiKeyField = document.getElementById('db-api-key');
-  const usernameField = document.getElementById('db-username');
-
-  const backendUsername = safyUserProfile?.username || safyRuntimeUsername;
+  const type = databaseTypeFromProfile(profile || {});
+  setDatabaseFieldValue('db-type', type);
+  updateDatabaseFieldVisibility({ resetPort: !profile?.profile_id });
 
   if (!profile || !profile.profile_id) {
-    if (usernameField && backendUsername) usernameField.value = backendUsername;
-    if (apiKeyField) apiKeyField.placeholder = 'Enter API key';
+    setDatabaseFieldValue('db-host', 'localhost');
+    setDatabaseFieldValue('db-port', databasePortDefault(type));
+    setDatabaseFieldValue('db-authentication', 'sql_server');
+    setDatabaseFieldValue('db-encrypt', true);
+    setDatabaseFieldValue('db-trust-server-certificate', true);
+    setDatabaseFieldValue('db-rpc-function', 'safy_execute_sql');
+    setDatabaseFieldValue('db-timeout', 15);
+    const secretInput = document.getElementById('db-secret');
+    if (secretInput) {
+      secretInput.value = '';
+      secretInput.placeholder = type === 'supabase_rpc' ? 'Supabase anon/service role key' : 'Database password';
+    }
+    syncDatabaseUsernameField();
     return;
   }
 
-  if (nameField) nameField.value = profile.display_name || profile.profile_id || nameField.value || '';
-  if (baseUrlField && profile.base_url) baseUrlField.value = profile.base_url;
-  if (usernameField) usernameField.value = backendUsername || profile.username || usernameField.value || '';
-  if (apiKeyField) {
-    apiKeyField.value = '';
-    apiKeyField.placeholder = profile.has_raw_secret || profile.secret_stored ? 'Saved in .env; leave blank to keep existing key' : 'Enter API key';
+  setDatabaseFieldValue('db-profile-name', profile.display_name || profile.profile_id || '');
+  setDatabaseFieldValue('db-base-url', profile.base_url || '');
+  setDatabaseFieldValue('db-host', profile.host || 'localhost');
+  setDatabaseFieldValue('db-port', profile.port ?? databasePortDefault(type));
+  setDatabaseFieldValue('db-database', profile.database && profile.database !== 'supabase_api' ? profile.database : '');
+  setDatabaseFieldValue('db-sqlite-path', profile.sqlite_path || (type === 'sqlite' ? profile.database : ''));
+  setDatabaseFieldValue('db-allowed-root', profile.allowed_root || '');
+  setDatabaseFieldValue('db-instance', profile.instance || '');
+  setDatabaseFieldValue('db-authentication', profile.authentication || (profile.trusted_connection ? 'windows' : 'sql_server'));
+  setDatabaseFieldValue('db-service-name', profile.service_name || (type === 'oracle' ? profile.database : ''));
+  setDatabaseFieldValue('db-sid', profile.sid || '');
+  setDatabaseFieldValue('db-schema', profile.schema || '');
+  syncDatabaseUsernameField();
+  setDatabaseFieldValue('db-ssl-mode', profile.ssl_mode || 'preferred');
+  setDatabaseFieldValue('db-encrypt', profile.encrypt !== false);
+  setDatabaseFieldValue('db-trust-server-certificate', Boolean(profile.trust_server_certificate));
+  setDatabaseFieldValue('db-odbc-driver', profile.odbc_driver || 'ODBC Driver 18 for SQL Server');
+  setDatabaseFieldValue('db-rpc-function', profile.sql_rpc_function || 'safy_execute_sql');
+  setDatabaseFieldValue('db-timeout', profile.timeout_seconds || 15);
+
+  const secretInput = document.getElementById('db-secret');
+  if (secretInput) {
+    secretInput.value = '';
+    secretInput.placeholder = profile.has_raw_secret || profile.secret_stored
+      ? 'Saved in .env; leave blank to keep existing secret'
+      : (type === 'supabase_rpc' ? 'Supabase anon/service role key' : 'Database password');
   }
+  updateDatabaseFieldVisibility();
 }
 
 function syncModelFields() {
@@ -1294,10 +1372,67 @@ async function activateModelProfile() {
   }
 }
 
-function databasePortDefault(driver) {
-  return driver === 'mysql' ? 3306 : driver === 'sqlite' ? 0 : driver === 'sqlserver' ? 1433 : driver === 'oracle' ? 1521 : driver === 'supabase_rpc' ? 443 : 5432;
+const SAFY_DATABASE_TYPE_CONFIG = Object.freeze({
+  postgresql: {
+    label: 'PostgreSQL',
+    provider: 'self_hosted',
+    driver: 'postgresql',
+    port: 5432
+  },
+  supabase_rpc: {
+    label: 'Supabase API / RPC',
+    provider: 'supabase',
+    driver: 'supabase_rpc',
+    port: 443
+  },
+  mysql: {
+    label: 'MySQL / MariaDB',
+    provider: 'self_hosted',
+    driver: 'mysql',
+    port: 3306
+  },
+  sqlite: {
+    label: 'SQLite',
+    provider: 'self_hosted',
+    driver: 'sqlite',
+    port: 0
+  },
+  sqlserver: {
+    label: 'SQL Server',
+    provider: 'self_hosted',
+    driver: 'sqlserver',
+    port: 1433
+  },
+  oracle: {
+    label: 'Oracle',
+    provider: 'self_hosted',
+    driver: 'oracle',
+    port: 1521
+  }
+});
+
+function normalizeDatabaseType(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  const aliases = {
+    postgres: 'postgresql',
+    postgresql: 'postgresql',
+    supabase: 'supabase_rpc',
+    supabase_rest: 'supabase_rpc',
+    supabase_rpc: 'supabase_rpc',
+    mysql: 'mysql',
+    mariadb: 'mysql',
+    sqlite: 'sqlite',
+    sql_server: 'sqlserver',
+    sqlserver: 'sqlserver',
+    mssql: 'sqlserver',
+    oracle: 'oracle'
+  };
+  return aliases[raw] || 'postgresql';
 }
 
+function databasePortDefault(databaseType) {
+  return SAFY_DATABASE_TYPE_CONFIG[normalizeDatabaseType(databaseType)]?.port ?? 0;
+}
 
 function inferDatabaseDriverFromBaseUrl(baseUrl) {
   const raw = String(baseUrl || '').trim().toLowerCase();
@@ -1310,41 +1445,103 @@ function inferDatabaseDriverFromBaseUrl(baseUrl) {
   return 'postgresql';
 }
 
-function parseDatabaseBaseUrl(baseUrl, driver) {
-  const fallbackPort = databasePortDefault(driver);
-  const result = {
-    host: 'localhost',
-    port: fallbackPort,
-    database: '',
-    sqlite_path: '',
-    base_url: baseUrl || ''
-  };
+function databaseTypeFromProfile(profile = {}) {
+  return normalizeDatabaseType(
+    profile.database_type ||
+    profile.driver ||
+    profile.dbms ||
+    profile.engine ||
+    inferDatabaseDriverFromBaseUrl(profile.base_url || '')
+  );
+}
 
-  if (!baseUrl) return result;
+function databaseTypeConfig(databaseType = null) {
+  const type = normalizeDatabaseType(databaseType || document.getElementById('db-type')?.value || 'postgresql');
+  return { type, ...(SAFY_DATABASE_TYPE_CONFIG[type] || SAFY_DATABASE_TYPE_CONFIG.postgresql) };
+}
 
-  if (driver === 'sqlite') {
-    const sqlitePath = baseUrl.replace(/^sqlite:\/\//i, '');
-    result.database = sqlitePath;
-    result.sqlite_path = sqlitePath;
-    result.host = '';
-    result.port = 0;
-    return result;
+function setDatabaseFieldValue(id, value) {
+  const field = document.getElementById(id);
+  if (!field || value === undefined || value === null) return;
+  if (field.type === 'checkbox') field.checked = Boolean(value);
+  else field.value = String(value);
+}
+
+function databaseLoginUsername() {
+  return String(safyUserProfile?.username || safyRuntimeUsername || '').trim();
+}
+
+function syncDatabaseUsernameField() {
+  const field = document.getElementById('db-username');
+  if (!field) return;
+  field.value = databaseLoginUsername();
+}
+
+function isSqlServerWindowsAuth() {
+  return normalizeDatabaseType(document.getElementById('db-type')?.value) === 'sqlserver'
+    && document.getElementById('db-authentication')?.value === 'windows';
+}
+
+function updateDatabaseFieldVisibility({ resetPort = false } = {}) {
+  const config = databaseTypeConfig();
+  const windowsAuth = isSqlServerWindowsAuth();
+  document.querySelectorAll('.database-type-field[data-db-types]').forEach((field) => {
+    const allowed = String(field.dataset.dbTypes || '').split(/\s+/).filter(Boolean);
+    let visible = allowed.includes(config.type);
+    if (visible && field.dataset.authTypes === 'password' && windowsAuth) visible = false;
+    if (visible && field.dataset.authTypes === 'secret' && windowsAuth) visible = false;
+    field.classList.toggle('hidden', !visible);
+    field.querySelectorAll('input, select, textarea').forEach((input) => {
+      input.disabled = !visible;
+    });
+  });
+
+  const secretLabel = document.getElementById('db-secret-label');
+  const secretInput = document.getElementById('db-secret');
+  if (secretLabel) secretLabel.textContent = config.type === 'supabase_rpc' ? 'API Key' : 'Password';
+  if (secretInput) secretInput.placeholder = config.type === 'supabase_rpc' ? 'Supabase anon/service role key' : 'Database password';
+  syncDatabaseUsernameField();
+
+  if (resetPort) setDatabaseFieldValue('db-port', config.port);
+  if (config.type === 'sqlserver') {
+    const auth = document.getElementById('db-authentication');
+    if (auth && !['sql_server', 'windows'].includes(auth.value)) auth.value = 'sql_server';
   }
+}
 
+function parseDatabaseBaseUrl(baseUrl, databaseType) {
+  const type = normalizeDatabaseType(databaseType);
+  const fallbackPort = databasePortDefault(type);
+  const result = { host: 'localhost', port: fallbackPort, database: '', sqlite_path: '', base_url: baseUrl || '' };
+  if (!baseUrl) return result;
+  if (type === 'sqlite') {
+    const sqlitePath = baseUrl.replace(/^sqlite:\/\//i, '');
+    return { ...result, host: '', port: 0, database: sqlitePath, sqlite_path: sqlitePath };
+  }
   try {
     const parsed = new URL(baseUrl);
     result.host = parsed.hostname || 'localhost';
     result.port = Number(parsed.port || fallbackPort);
     result.database = (parsed.pathname || '').replace(/^\//, '');
-    return result;
   } catch {
     result.database = baseUrl;
-    return result;
   }
+  return result;
+}
+
+function buildDatabaseBaseUrl(type, fields) {
+  if (type === 'supabase_rpc') return fields.base_url;
+  if (type === 'sqlite') return fields.sqlite_path ? `sqlite://${fields.sqlite_path}` : '';
+  const host = fields.host || 'localhost';
+  const port = Number(fields.port || databasePortDefault(type));
+  const database = fields.database || fields.service_name || fields.sid || '';
+  const schemes = { postgresql: 'postgresql', mysql: 'mysql', sqlserver: 'sqlserver', oracle: 'oracle' };
+  return `${schemes[type] || type}://${host}${port ? `:${port}` : ''}/${database}`;
 }
 
 function resetChatDraft() {
   safyChatId = null;
+  resetExecuteContext({ clearSql: true, reason: 'new_chat' });
   hideNormalizedError();
   const empty = document.getElementById('chat-empty-state');
   const messages = document.getElementById('chat-messages');
@@ -1579,12 +1776,22 @@ async function switchActiveDatabase() {
   const select = document.getElementById('database-switch-select');
   const profileId = select?.value || '';
   if (!profileId) return;
+
+  // Switching databases refreshes several dashboard data sources. Preserve the
+  // independent model panel state and close only the database configuration
+  // panel after a successful switch.
+  const modelPanel = document.getElementById('model-config-panel');
+  const modelConfigWasOpen = Boolean(modelPanel && !modelPanel.classList.contains('hidden'));
+
   hideNormalizedError();
   try {
     const data = await apiRequest(`/database-profiles/${encodeURIComponent(profileId)}/activate`, { method: 'POST' });
+    resetExecuteContext({ clearSql: true, reason: 'database_switch' });
     safyDatabaseProfile = { ...(safyDatabaseProfile || {}), ...data, active: true };
     await loadProfiles();
     await updateSchemaLaunchHint();
+    closeDatabaseConfig();
+    setPanel('model', modelConfigWasOpen);
     showToast(`Switched to ${data.display_name || data.profile_id}.`, 'success');
   } catch (error) {
     renderNormalizedError(error);
@@ -1608,74 +1815,123 @@ function currentDatabaseProfileIdForForm(displayName) {
 }
 
 function databaseFormBody() {
-  const baseUrl = (document.getElementById('db-base-url')?.value || '').trim();
-  const apiKey = (document.getElementById('db-api-key')?.value || '').trim();
-  const username = (safyUserProfile?.username || safyRuntimeUsername || document.getElementById('db-username')?.value || '').trim();
+  const config = databaseTypeConfig();
+  const databaseType = config.type;
   const displayName = (document.getElementById('db-profile-name')?.value || safyDatabaseProfile?.display_name || 'Main database').trim();
-  const driver = inferDatabaseDriverFromBaseUrl(baseUrl);
-  const parsed = parseDatabaseBaseUrl(baseUrl, driver);
-  const keepSavedSecret = !apiKey && Boolean(safyDatabaseProfile?.secret_env || safyDatabaseProfile?.password_env || safyDatabaseProfile?.api_key_env || safyDatabaseProfile?.has_raw_secret || safyDatabaseProfile?.secret_stored);
+  const secret = (document.getElementById('db-secret')?.value || '').trim();
+  const authentication = databaseType === 'sqlserver'
+    ? (document.getElementById('db-authentication')?.value || 'sql_server')
+    : databaseType === 'supabase_rpc' ? 'api_key' : databaseType === 'sqlite' ? 'none' : 'password';
+  const windowsAuth = databaseType === 'sqlserver' && authentication === 'windows';
+  const host = (document.getElementById('db-host')?.value || '').trim();
+  const portValue = (document.getElementById('db-port')?.value || '').trim();
+  const port = portValue === '' ? null : Number(portValue);
+  const database = (document.getElementById('db-database')?.value || '').trim();
+  const sqlitePath = (document.getElementById('db-sqlite-path')?.value || '').trim();
+  const serviceName = (document.getElementById('db-service-name')?.value || '').trim();
+  const sid = (document.getElementById('db-sid')?.value || '').trim();
+  const baseUrlInput = (document.getElementById('db-base-url')?.value || '').trim();
+  const keepSavedSecret = !secret && !windowsAuth && databaseType !== 'sqlite' && Boolean(
+    safyDatabaseProfile?.secret_env || safyDatabaseProfile?.password_env || safyDatabaseProfile?.api_key_env || safyDatabaseProfile?.has_raw_secret || safyDatabaseProfile?.secret_stored
+  );
+  const fields = {
+    base_url: baseUrlInput,
+    host,
+    port,
+    database,
+    sqlite_path: sqlitePath,
+    service_name: serviceName,
+    sid
+  };
+  const baseUrl = buildDatabaseBaseUrl(databaseType, fields);
 
-  const body = {
+  // Unified database-profile contract. Every database type sends the same JSON
+  // shape; irrelevant fields remain null/empty and the backend classifies them.
+  const payload = {
+    schema_version: '1.0',
     profile_id: currentDatabaseProfileIdForForm(displayName),
+    profile_name: displayName,
     display_name: displayName,
-    provider: baseUrl.includes('supabase.co') ? 'supabase' : 'unified',
-    driver,
-    dbms: driver,
+    database_type: databaseType,
+    provider: config.provider,
+    driver: config.driver,
+    dbms: config.driver,
+    engine: config.driver,
+    connection_kind: databaseType === 'supabase_rpc' ? 'supabase_rpc' : 'native_sql',
+    execution_transport: databaseType === 'supabase_rpc' ? 'postgrest_rpc' : 'native_driver',
     base_url: baseUrl,
-    username,
-    host: parsed.host,
-    port: parsed.port,
-    database: parsed.database,
-    sqlite_path: parsed.sqlite_path,
-    ssl_mode: driver === 'supabase_rpc' ? 'api' : 'preferred',
+    host: databaseType === 'sqlite' ? '' : host,
+    port: databaseType === 'sqlite' ? 0 : port,
+    instance: (document.getElementById('db-instance')?.value || '').trim(),
+    database: databaseType === 'oracle' ? (serviceName || sid) : databaseType === 'sqlite' ? sqlitePath : database,
+    schema: (document.getElementById('db-schema')?.value || '').trim(),
+    sqlite_path: sqlitePath,
+    allowed_root: (document.getElementById('db-allowed-root')?.value || '').trim(),
+    service_name: serviceName,
+    sid: sid,
+    authentication,
+    trusted_connection: windowsAuth,
+    username: windowsAuth || databaseType === 'sqlite' || databaseType === 'supabase_rpc'
+      ? ''
+      : databaseLoginUsername(),
+    password: databaseType !== 'supabase_rpc' && !windowsAuth ? secret : '',
+    api_key: databaseType === 'supabase_rpc' ? secret : '',
+    raw_secret: secret,
+    secret_kind: databaseType === 'supabase_rpc' ? 'api_key' : windowsAuth || databaseType === 'sqlite' ? 'none' : 'password',
+    preserve_secret: keepSavedSecret,
+    secret_mode: secret || keepSavedSecret ? 'env' : 'none',
+    password_mode: secret || keepSavedSecret ? 'env' : 'none',
+    password_env: keepSavedSecret ? (safyDatabaseProfile?.password_env || safyDatabaseProfile?.secret_env || '') : '',
+    api_key_env: keepSavedSecret ? (safyDatabaseProfile?.api_key_env || safyDatabaseProfile?.secret_env || '') : '',
+    secret_env: keepSavedSecret ? (safyDatabaseProfile?.secret_env || safyDatabaseProfile?.password_env || safyDatabaseProfile?.api_key_env || '') : '',
+    ssl_mode: databaseType === 'supabase_rpc' ? 'api' : (document.getElementById('db-ssl-mode')?.value || 'preferred'),
+    encrypt: Boolean(document.getElementById('db-encrypt')?.checked),
+    trust_server_certificate: Boolean(document.getElementById('db-trust-server-certificate')?.checked),
+    odbc_driver: (document.getElementById('db-odbc-driver')?.value || '').trim(),
+    sql_rpc_function: (document.getElementById('db-rpc-function')?.value || 'safy_execute_sql').trim(),
+    sql_rpc_argument: 'sql_text',
+    timeout_seconds: Number(document.getElementById('db-timeout')?.value || 15),
     user_query_access_mode: 'credential_permissions',
     read_only: true,
     active: true,
     real_db_readonly: true
   };
+  return payload;
+}
 
-  if (apiKey) {
-    body.api_key = apiKey;
-    body.raw_secret = apiKey;
-    body.secret_mode = 'env';
-    body.password_mode = 'env';
-    body.password_env = safyDatabaseProfile?.password_env || '';
-    body.api_key_env = safyDatabaseProfile?.api_key_env || '';
-    body.secret_env = safyDatabaseProfile?.secret_env || '';
-  } else if (keepSavedSecret) {
-    body.preserve_secret = true;
-    body.secret_mode = 'env';
-    body.password_mode = 'env';
-    body.password_env = safyDatabaseProfile?.password_env || safyDatabaseProfile?.secret_env || '';
-    body.api_key_env = safyDatabaseProfile?.api_key_env || safyDatabaseProfile?.secret_env || '';
-    body.secret_env = safyDatabaseProfile?.secret_env || safyDatabaseProfile?.password_env || safyDatabaseProfile?.api_key_env || '';
-  } else {
-    body.api_key = '';
-    body.raw_secret = '';
-    body.secret_mode = 'none';
-    body.password_mode = 'none';
-    body.password_env = '';
-    body.api_key_env = '';
-    body.secret_env = '';
+function validateDatabasePayload(payload) {
+  const type = normalizeDatabaseType(payload.database_type);
+  if (!payload.display_name) return 'Connection Name is required.';
+  if (type === 'supabase_rpc') {
+    if (!payload.base_url) return 'Supabase Project Base URL is required.';
+    if (!payload.api_key && !payload.preserve_secret) return 'Supabase API Key is required.';
+    return '';
   }
-
-  if (driver === 'supabase_rpc') {
-    body.connection_kind = 'supabase_rpc';
-    body.execution_transport = 'postgrest_rpc';
-    body.database = body.database && body.database.toLowerCase().startsWith('rest/v1') ? 'supabase_api' : (body.database || 'supabase_api');
-    body.sql_rpc_function = safyDatabaseProfile?.sql_rpc_function || 'safy_execute_sql';
+  if (type === 'sqlite') {
+    return payload.sqlite_path ? '' : 'SQLite File is required.';
   }
-
-  return body;
+  if (!payload.host) return 'Host is required.';
+  if (type !== 'sqlserver' || !payload.instance) {
+    if (!payload.port && payload.port !== 0) return 'Port is required.';
+  }
+  if (type === 'oracle') {
+    if (!payload.service_name && !payload.sid) return 'Oracle Service Name or SID is required.';
+  } else if (!payload.database) {
+    return 'Database is required.';
+  }
+  if (type === 'sqlserver' && payload.authentication === 'windows') return '';
+  if (!payload.username) return 'SAFY login username is required.';
+  if (!payload.password && !payload.preserve_secret) return 'Database Password is required.';
+  return '';
 }
 
 async function saveDatabaseConfig() {
   hideNormalizedError();
   try {
     const payload = databaseFormBody();
-    if (!payload.display_name || !payload.base_url) {
-      throw normalizedError({ code: 'DATABASE_FORM_INVALID', message: 'Connection Name and Base URL are required.' }, 'Connection Name and Base URL are required.');
+    const validationMessage = validateDatabasePayload(payload);
+    if (validationMessage) {
+      throw normalizedError({ code: 'DATABASE_FORM_INVALID', message: validationMessage }, validationMessage);
     }
     const data = await apiRequest('/database-profiles', { method: 'POST', body: JSON.stringify(payload) });
     applyDatabaseWorkflowResult(data, `Database profile saved: ${data.profile_id || 'main_database'}.`);
@@ -1693,8 +1949,9 @@ async function testDatabaseConnection() {
   hideNormalizedError();
   try {
     const payload = databaseFormBody();
-    if (!payload.display_name || !payload.base_url) {
-      throw normalizedError({ code: 'DATABASE_FORM_INVALID', message: 'Connection Name and Base URL are required.' }, 'Connection Name and Base URL are required.');
+    const validationMessage = validateDatabasePayload(payload);
+    if (validationMessage) {
+      throw normalizedError({ code: 'DATABASE_FORM_INVALID', message: validationMessage }, validationMessage);
     }
     const data = await apiRequest('/database-profiles/test', { method: 'POST', body: JSON.stringify(payload) });
     setConnectionStatus('database', 'connected', data?.profile_preview?.display_name ? `${data.profile_preview.display_name} · Test passed` : 'Database test passed');
@@ -1712,6 +1969,7 @@ async function testDatabaseConnection() {
 
 async function startChatSession() {
   try {
+    resetExecuteContext({ clearSql: true, reason: 'new_session' });
     const data = await apiRequest('/sessions', { method: 'POST', body: JSON.stringify({}) });
     safyChatId = data.chat_id;
     await loadSessions();
@@ -1807,7 +2065,7 @@ function restoreExecuteBoxFromHistory(history = []) {
 async function switchSession(chatId) {
   safyChatId = chatId;
   hideNormalizedError();
-  safyCurrentCheck = null;
+  resetExecuteContext({ clearSql: true, reason: 'session_switch' });
   const empty = document.getElementById('chat-empty-state');
   const messages = document.getElementById('chat-messages');
   if (empty) empty.style.display = 'none';
@@ -1925,16 +2183,6 @@ async function sendChatMessage() {
     return;
   }
 
-  if (!command.isExecute && !readOnlyDbRequest && isDatabaseOperationRequest(rawText)) {
-    appendChatBubble('user', rawText);
-    input.value = '';
-    updateActiveCommandVisual();
-    hideSlashCommandMenu();
-    await getActiveDatabaseProfileForChat();
-    appendChatBubble('assistant', databaseCommandGuardMessage());
-    return;
-  }
-
   if (!safyChatId) {
     await startChatSession();
     if (!safyChatId) {
@@ -1956,9 +2204,9 @@ async function sendChatMessage() {
       throw normalizedError({ code: 'MODEL_PROFILE_NOT_ACTIVATED', message: 'MODEL_PROFILE_NOT_ACTIVATED' }, 'MODEL_PROFILE_NOT_ACTIVATED');
     }
 
+    const activeDatabaseProfile = await getActiveDatabaseProfileForChat().catch(() => null);
     const shouldUseDatabaseRuntime = command.isExecute || readOnlyDbRequest;
-    const activeDatabaseProfile = shouldUseDatabaseRuntime ? await getActiveDatabaseProfileForChat() : null;
-    if (shouldUseDatabaseRuntime && !activeDatabaseProfile?.profile_id) {
+    if (command.isExecute && !activeDatabaseProfile?.profile_id) {
       appendChatBubble('assistant', 'Chưa có database thật đang active. Hãy Save/Test database trước rồi chạy lại.');
       return;
     }
@@ -1970,15 +2218,18 @@ async function sendChatMessage() {
       options: {
         command: command.isExecute ? 'execute' : 'chat',
         read_only_direct: readOnlyDbRequest,
+        active_database_profile_id: activeDatabaseProfile?.profile_id || undefined,
         streaming: Boolean(safyUiSettings.streaming),
         username: safyUserProfile?.username || safyRuntimeUsername || undefined,
         context_sources: contextSourcesForRequest()
       }
     };
-    if (shouldUseDatabaseRuntime) {
-      chatPayload.target = 'connected_database';
+    if (activeDatabaseProfile?.profile_id) {
       chatPayload.database_profile_id = activeDatabaseProfile.profile_id;
-      chatPayload.auto_execute = true;
+    }
+    if (shouldUseDatabaseRuntime && activeDatabaseProfile?.profile_id) {
+      chatPayload.target = 'connected_database';
+      chatPayload.auto_execute = readOnlyDbRequest;
     }
 
     const response = await fetch(`${SAFY_API_BASE}/agent/chat`, {
@@ -2103,6 +2354,7 @@ async function createSandbox() {
   try {
     const box = await apiRequest('/sandboxes', { method: 'POST', body: JSON.stringify(body) });
     safySandboxId = box.id;
+    resetExecuteContext({ clearSql: false, reason: 'sandbox_created' });
     await loadSandboxes();
   } catch (error) {
     renderNormalizedError(error);
@@ -2115,6 +2367,7 @@ async function sandboxAction(action) {
   try {
     const path = action === 'delete' ? `/sandboxes/${id}` : `/sandboxes/${id}/${action}`;
     await apiRequest(path, { method: action === 'delete' ? 'DELETE' : 'POST', body: action === 'restore' ? JSON.stringify({ source_kind: 'public_dataset' }) : undefined });
+    resetExecuteContext({ clearSql: false, reason: `sandbox_${action}` });
     await loadSandboxes();
   } catch (error) {
     renderNormalizedError(error);
@@ -2139,6 +2392,12 @@ async function checkQuery() {
         real_db_mode: Boolean(safyDatabaseProfile?.real_db_readonly)
       })
     });
+    const normalizedSql = String(safyCurrentCheck?.normalized_sql || '').trim();
+    const queryInput = document.getElementById('user-query-input');
+    if (normalizedSql && normalizedSql !== sql.trim()) {
+      if (queryInput) queryInput.value = normalizedSql;
+      showToast('SQL was adapted to the selected database dialect before safety hashing.', 'info');
+    }
     renderSafetyReport(safyCurrentCheck);
     const execute = document.getElementById('execute-query-btn');
     const canExecute = Boolean(safyCurrentCheck?.allowed_to_attempt)
@@ -2193,7 +2452,11 @@ async function executeQuery(userDecision = 'yes') {
         session_id: safyChatId || null,
         target: safyCurrentCheck.target || 'connected_database',
         sandbox_id: safyCurrentCheck.sandbox_id || null,
-        database_profile_id: safyCurrentCheck.database_profile_id || safyDatabaseProfile?.profile_id || null,
+        database_profile_id: safyCurrentCheck.database_profile_id || null,
+        context_generation: safyCurrentCheck.context_generation ?? null,
+        schema_generation: safyCurrentCheck.schema_generation ?? null,
+        driver: safyCurrentCheck.driver || null,
+        dialect: safyCurrentCheck.dialect || null,
         user_decision: userDecision,
         confirmation_code: document.getElementById('confirmation-code-input')?.value || null,
         real_db_mode: Boolean(safyDatabaseProfile?.real_db_readonly)
@@ -2239,6 +2502,8 @@ function initSafyUI() {
   document.getElementById('database-save-btn')?.addEventListener('click', saveDatabaseConfig);
   document.getElementById('database-test-btn')?.addEventListener('click', testDatabaseConnection);
   document.getElementById('database-switch-btn')?.addEventListener('click', switchActiveDatabase);
+  document.getElementById('db-type')?.addEventListener('change', () => updateDatabaseFieldVisibility({ resetPort: true }));
+  document.getElementById('db-authentication')?.addEventListener('change', () => updateDatabaseFieldVisibility());
   document.getElementById('schema-open-btn')?.addEventListener('click', openSchemaGraphPage);
   document.getElementById('toggle-left-sidebar-btn')?.addEventListener('click', toggleLeftSidebar);
   document.getElementById('toggle-right-sidebar-btn')?.addEventListener('click', toggleRightSidebar);
@@ -2263,6 +2528,16 @@ function initSafyUI() {
   });
   document.getElementById('check-query-btn')?.addEventListener('click', checkQuery);
   document.getElementById('execute-query-btn')?.addEventListener('click', () => executeQuery('yes'));
+  document.getElementById('user-query-input')?.addEventListener('input', () => {
+    if (!safyCurrentCheck) return;
+    resetExecuteContext({ clearSql: false, reason: 'sql_changed' });
+    const status = document.getElementById('execute-check-status');
+    if (status) status.textContent = 'SQL changed — check again';
+  });
+  document.getElementById('sandbox-select')?.addEventListener('change', (event) => {
+    safySandboxId = event.target?.value || null;
+    resetExecuteContext({ clearSql: false, reason: 'sandbox_switch' });
+  });
   loadProfiles();
   loadSessions();
   updateSchemaLaunchHint();

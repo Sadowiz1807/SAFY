@@ -44,6 +44,63 @@ class ModelProviderPatchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class DatabaseProfilePayload(BaseModel):
+    """Unified database connection payload used by every supported DB type.
+
+    The browser always sends this complete shape. The backend treats
+    ``database_type`` plus structured fields as authoritative and keeps URL
+    inference only for backward compatibility.
+    """
+
+    schema_version: str = "1.0"
+    profile_id: str | None = "main_database"
+    profile_name: str | None = None
+    display_name: str | None = "Main database"
+    database_type: Literal["postgresql", "supabase_rpc", "mysql", "sqlite", "sqlserver", "oracle"] | None = None
+    provider: str | None = None
+    driver: str | None = None
+    dbms: str | None = None
+    engine: str | None = None
+    connection_kind: str | None = None
+    execution_transport: str | None = None
+    base_url: str | None = None
+    host: str | None = None
+    port: int | None = None
+    instance: str | None = None
+    database: str | None = None
+    database_schema: str | None = Field(default=None, alias="schema")
+    sqlite_path: str | None = None
+    allowed_root: str | None = None
+    service_name: str | None = None
+    sid: str | None = None
+    authentication: Literal["password", "api_key", "none", "sql_server", "windows"] | None = None
+    trusted_connection: bool = False
+    username: str | None = None
+    password: str | None = None
+    api_key: str | None = None
+    raw_secret: str | None = None
+    secret_kind: Literal["password", "api_key", "none"] | None = None
+    preserve_secret: bool = False
+    secret_mode: Literal["none", "env", "raw_secret"] = "none"
+    password_mode: Literal["none", "env", "raw_secret"] = "none"
+    password_env: str | None = None
+    api_key_env: str | None = None
+    secret_env: str | None = None
+    ssl_mode: str | None = "preferred"
+    encrypt: bool = True
+    trust_server_certificate: bool = False
+    odbc_driver: str | None = None
+    sql_rpc_function: str | None = "safy_execute_sql"
+    sql_rpc_argument: str | None = "sql_text"
+    timeout_seconds: int = Field(default=15, ge=1, le=300)
+    user_query_access_mode: Literal["credential_permissions", "read_only", "disabled"] = "credential_permissions"
+    read_only: bool = True
+    active: bool = True
+    real_db_readonly: bool = True
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
 class DatabaseLegacySaveRequest(BaseModel):
     profile_id: str | None = "main_database"
     display_name: str | None = "Main database"
@@ -117,6 +174,10 @@ class QueryCheckRequest(BaseModel):
     database_profile_id: str | None = None
     user_query_access_mode: Literal["credential_permissions", "read_only", "disabled"] = "credential_permissions"
     real_db_mode: bool = False
+    context_generation: int | None = None
+    schema_generation: str | None = None
+    driver: str | None = None
+    dialect: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -133,6 +194,10 @@ class QueryExecuteRequest(BaseModel):
     confirmation_code: str | None = Field(default=None, pattern=r"^\d{4}$")
     real_db_mode: bool = False
     row_limit: int = Field(default=100, ge=1, le=1000)
+    context_generation: int | None = None
+    schema_generation: str | None = None
+    driver: str | None = None
+    dialect: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 

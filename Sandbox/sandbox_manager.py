@@ -3,12 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import shutil
 
 from Gateway.db_drivers import execute_readonly
 from Gateway.db_drivers.errors import DriverError
+from Gateway.sql_classifier import ALTER, DELETE, DROP, INSERT, MERGE, MULTI_STATEMENT, SELECT, TRUNCATE, UPDATE, classify_sql
 from Gateway.sql_normalizer import normalize_sql
 
 from .audit import SandboxAudit
@@ -37,6 +39,39 @@ class SandboxManager:
     def _audit(self, sandbox_id: str) -> SandboxAudit:
         return SandboxAudit(self.store.sandbox_dir(sandbox_id))
 
+    def readiness_state(self, record: SandboxRecord) -> dict:
+        checked_at = now_iso()
+        supported_runtime = record.dbms == "sqlite" or self._is_postgres(record)
+        runtime_ok = record.state == "ready" and supported_runtime
+        try:
+            schema_cache = SchemaCache(self.store.sandbox_dir(record.sandbox_id)).read()
+            schema_ok = runtime_ok and bool(schema_cache.get("tables"))
+        except (OSError, json.JSONDecodeError):
+            schema_ok = False
+        validation_ok = runtime_ok and supported_runtime
+        error_code = None
+        if record.dbms == "sqlserver":
+            error_code = "SQLSERVER_WRITE_SANDBOX_UNSUPPORTED"
+        elif record.dbms not in {"sqlite", "postgresql", "postgres", "supabase_postgres"}:
+            error_code = "SANDBOX_VALIDATION_NOT_READY"
+        return {
+            "runtime_ready": {"status": bool(runtime_ok), "checked_at": checked_at, "error_code": None if runtime_ok else error_code or record.last_error_code},
+            "schema_ready": {"status": bool(schema_ok), "checked_at": checked_at, "error_code": None if schema_ok else "SANDBOX_SCHEMA_NOT_READY"},
+            "validation_ready": {"status": bool(validation_ok), "checked_at": checked_at, "error_code": None if validation_ok else error_code or "SANDBOX_VALIDATION_NOT_READY"},
+            "overall_ready": {"status": bool(runtime_ok and schema_ok and validation_ok), "checked_at": checked_at, "error_code": None if runtime_ok and schema_ok and validation_ok else error_code or "SANDBOX_NOT_READY"},
+        }
+
+    @staticmethod
+    def _sql_requires_schema_readiness(sql: str) -> bool:
+        classification = classify_sql(sql)
+        if classification.statement_type in {SELECT, INSERT, UPDATE, DELETE, MERGE, ALTER, DROP, TRUNCATE, MULTI_STATEMENT}:
+            return True
+        if classification.statement_type == "CREATE":
+            # A standalone CREATE TABLE can be validated in a clean sandbox.
+            # Other CREATE forms generally depend on an existing schema object.
+            return not bool(re.match(r"^\s*CREATE\s+TABLE\b", sql or "", re.IGNORECASE))
+        return False
+
     def _public(self, record: SandboxRecord) -> dict:
         data = record.to_dict()
         data.pop("runtime_handle", None)
@@ -44,6 +79,7 @@ class SandboxManager:
         data["engine"] = record.dbms
         data["status"] = record.state
         data["network_disabled"] = True
+        data["readiness"] = self.readiness_state(record)
         return data
 
     def _legacy_workspace_root(self) -> Path:
@@ -506,6 +542,19 @@ GRANT anon, authenticated, service_role TO supabase_admin WITH ADMIN OPTION;
                 record = self.store.get(sandbox_id)
         if record.state != "ready":
             raise SandboxError("SANDBOX_NOT_READY", f"Sandbox status is {record.state}.", {"sandbox_id": sandbox_id, "status": record.state})
+        readiness = self.readiness_state(record)
+        if not readiness["runtime_ready"]["status"]:
+            code = readiness["runtime_ready"].get("error_code") or "SANDBOX_NOT_READY"
+            raise SandboxError(code, "Sandbox runtime is not ready.", {"sandbox_id": sandbox_id, "readiness": readiness})
+        if not readiness["validation_ready"]["status"]:
+            code = readiness["validation_ready"].get("error_code") or "SANDBOX_VALIDATION_NOT_READY"
+            raise SandboxError(code, "Sandbox validation capability is not ready.", {"sandbox_id": sandbox_id, "readiness": readiness})
+        if self._sql_requires_schema_readiness(sql) and not readiness["schema_ready"]["status"]:
+            raise SandboxError(
+                "SANDBOX_SCHEMA_NOT_READY",
+                "Sandbox schema is not ready for SQL that references existing objects.",
+                {"sandbox_id": sandbox_id, "readiness": readiness},
+            )
 
         try:
             if self._is_postgres(record):

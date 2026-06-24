@@ -21,7 +21,7 @@ from Core.agent_execution_context import AgentExecutionContext
 from DataStore.config_loader import ConfigLoader, get_repo_root
 from DataStore.env_writer import EnvWriter, EnvWriterError
 from DataStore.env_secret_resolver import EnvSecretResolver, SecretResolverError
-from DataStore.profile_store import ProfileStoreError, database_profile_store, model_profile_store, user_store
+from DataStore.profile_store import ProfileStoreError, database_profile_store, model_profile_store, normalize_database_connection_payload, user_store
 from DataStore.schema_graph_store import SchemaGraphStore, SchemaGraphStoreError, empty_schema_graph
 from State.json_runtime_db import JsonRuntimeDB
 from Gateway.query_orchestrator import QueryOrchestrator, QueryOrchestratorContext
@@ -32,11 +32,12 @@ from LLM.provider_store import ModelProviderStore
 from Logging.redact import redact_text
 from Gateway.db_drivers import get_schema as driver_get_schema, test_connection as driver_test_connection
 from Gateway.db_drivers.errors import DriverError
+from Gateway.db_drivers.sqlserver_driver import is_system_database
 from State.runtime_db import RuntimeDBError
 from Sandbox.sandbox_manager import SandboxError, SandboxManager
 
 from .runtime_store import envelope, error_envelope
-from .schemas import AgentChatRequest, ContextUrlFetchRequest, DatabaseLegacySaveRequest, DatabaseTestRequest, ModelLegacySaveRequest, ModelProviderPatchRequest, ModelProviderProfileRequest, QueryCheckRequest, QueryExecuteRequest, RecoveryResolveRequest, SandboxCreateRequest, SandboxRestoreRequest, SessionCreateRequest, SessionMessageRequest, UserLoginRequest
+from .schemas import AgentChatRequest, ContextUrlFetchRequest, DatabaseLegacySaveRequest, DatabaseProfilePayload, DatabaseTestRequest, ModelLegacySaveRequest, ModelProviderPatchRequest, ModelProviderProfileRequest, QueryCheckRequest, QueryExecuteRequest, RecoveryResolveRequest, SandboxCreateRequest, SandboxRestoreRequest, SessionCreateRequest, SessionMessageRequest, UserLoginRequest
 
 REPO_ROOT = get_repo_root()
 CONFIG = ConfigLoader(REPO_ROOT).load()
@@ -86,7 +87,7 @@ def _load_db_profile(profile_id: str):
 
 
 def _load_schema_graph(profile_id: str):
-    return SCHEMA_GRAPH_STORE.get(profile_id, _database_store().get(profile_id))
+    return _schema_graph_for_profile(_database_store().get(profile_id))
 
 AGENT_CORE = AgentCore(PROFILE_RUNTIME_DIR)
 AGENT_CORE.runtime_db = JsonRuntimeDB(PROFILE_RUNTIME_DIR)
@@ -99,6 +100,107 @@ AGENT_RUNTIME = AgentRuntime(
     runtime_db=AGENT_CORE.runtime_db,
 )
 CHECKS = QUERY_ORCHESTRATOR.checks
+
+
+def _profile_driver(profile: dict[str, Any] | None) -> str | None:
+    value = str((profile or {}).get("driver") or (profile or {}).get("dbms") or "").strip().lower()
+    return value or None
+
+
+def _profile_dialect(profile: dict[str, Any] | None) -> str | None:
+    value = str((profile or {}).get("dialect") or _profile_driver(profile) or "").strip().lower()
+    return value or None
+
+
+def _system_database_grounding_block(profile: dict[str, Any] | None) -> dict[str, Any] | None:
+    profile = profile or {}
+    driver = _profile_driver(profile)
+    database = str(profile.get("database") or "").strip()
+    if is_system_database(driver, database):
+        return {
+            "code": "SQLSERVER_SYSTEM_DATABASE_GROUNDING_BLOCKED",
+            "message": "SQL Server system databases cannot be used as application Schema Graph grounding. Select an application database first.",
+            "details": {"database": database, "driver": driver},
+        }
+    return None
+
+
+def _schema_generation_for_profile(profile: dict[str, Any] | None) -> str | None:
+    if not profile or not profile.get("profile_id"):
+        return None
+    profile_id = str(profile.get("profile_id"))
+    try:
+        graph = _schema_graph_for_profile(profile)
+    except Exception:
+        return f"schema:error:{profile_id}"
+    return str(
+        graph.get("schema_hash")
+        or graph.get("updated_at")
+        or f"schema:{graph.get('status') or 'empty'}:{profile_id}"
+    )
+
+
+def _context_generation_for_request(session_id: str | None, profile: dict[str, Any] | None) -> int:
+    if session_id and AGENT_RUNTIME.runtime_db and hasattr(AGENT_RUNTIME.runtime_db, "get_agent_state"):
+        try:
+            state = AGENT_RUNTIME.runtime_db.get_agent_state(session_id)
+            if isinstance(state, dict) and state.get("context_generation") is not None:
+                return int(state.get("context_generation") or 0)
+        except Exception:
+            pass
+    profile = profile or {}
+    return int(profile.get("context_generation") or profile.get("activation_generation") or 0)
+
+
+def _authoritative_query_binding(
+    *,
+    session_id: str | None,
+    profile: dict[str, Any] | None,
+    fallback_context_generation: int | None = None,
+    fallback_schema_generation: str | None = None,
+    fallback_driver: str | None = None,
+    fallback_dialect: str | None = None,
+) -> dict[str, Any]:
+    if profile:
+        return {
+            "context_generation": _context_generation_for_request(session_id, profile),
+            "schema_generation": _schema_generation_for_profile(profile),
+            "driver": _profile_driver(profile),
+            "dialect": _profile_dialect(profile),
+        }
+    return {
+        "context_generation": fallback_context_generation,
+        "schema_generation": fallback_schema_generation,
+        "driver": str(fallback_driver or "").strip().lower() or None,
+        "dialect": str(fallback_dialect or fallback_driver or "").strip().lower() or None,
+    }
+
+
+def _binding_request_error(payload: Any, binding: dict[str, Any]) -> tuple[str, str] | None:
+    checks = (
+        ("context_generation", "QUERY_CHECK_CONTEXT_STALE", "Session context changed. Run Check Safety again."),
+        ("schema_generation", "QUERY_CHECK_SCHEMA_STALE", "Schema context changed. Run Check Safety again."),
+        ("driver", "QUERY_CHECK_DRIVER_MISMATCH", "Database driver changed. Run Check Safety again."),
+        ("dialect", "QUERY_CHECK_DIALECT_MISMATCH", "Database dialect changed. Run Check Safety again."),
+    )
+    for field, code, message in checks:
+        requested = getattr(payload, field, None)
+        expected = binding.get(field)
+        if requested is None or expected is None:
+            continue
+        if field in {"driver", "dialect"}:
+            matches = str(requested).strip().lower() == str(expected).strip().lower()
+        else:
+            matches = requested == expected
+        if not matches:
+            return code, message
+    return None
+
+
+def _invalidate_runtime_bindings(reason: str, *, clear_context: bool = False, database_profile_id: str | None = None) -> dict[str, Any]:
+    checks = QUERY_ORCHESTRATOR.invalidate_checks(reason, database_profile_id=database_profile_id)
+    sessions = AGENT_RUNTIME.invalidate_all_execution_contexts(reason=reason, clear_context=clear_context)
+    return {**checks, **sessions}
 
 
 def _allowed_origins() -> list[str]:
@@ -418,6 +520,14 @@ def _public_database_profile(profile: dict | None) -> dict | None:
     public = dict(profile)
     secret_env = public.get("secret_env") or public.get("api_key_env") or public.get("password_env")
     has_secret = bool(secret_env or public.get("has_raw_secret") or public.get("raw_secret") or public.get("api_key") or public.get("password"))
+    if not has_secret:
+        # Recover the status of profiles saved by the former double-normalization
+        # path. Test Connection already wrote the deterministic .env key, but the
+        # second save pass cleared the symbolic reference from profile JSON.
+        try:
+            has_secret = bool(_database_raw_secret(public))
+        except DriverError:
+            has_secret = False
     for key in ("raw_secret", "raw_api_key", "raw_password", "password", "api_key", "token", "secret"):
         public.pop(key, None)
     if secret_env:
@@ -433,9 +543,33 @@ def _public_database_profiles(profiles: list[dict]) -> list[dict]:
     return [_public_database_profile(profile) for profile in profiles]
 
 
+def _database_login_username() -> str:
+    """Return the authenticated SAFY username used by native password DB profiles."""
+    profile = _active_user_profile() or {}
+    return str(profile.get("username") or "").strip()
+
+
+def _apply_database_login_username(profile: dict[str, Any]) -> dict[str, Any]:
+    """Apply the intentional SAFY-login-to-database-username mapping.
+
+    Supabase API/RPC, SQLite, and SQL Server Windows Authentication do not use
+    the SAFY login username as a native database credential.
+    """
+    mapped = dict(profile)
+    database_type = str(mapped.get("database_type") or mapped.get("driver") or mapped.get("dbms") or "").strip().lower()
+    authentication = str(mapped.get("authentication") or "").strip().lower()
+    if database_type in {"sqlite", "supabase_rpc", "supabase_rest"}:
+        return mapped
+    if database_type == "sqlserver" and authentication == "windows":
+        mapped["username"] = ""
+        return mapped
+    mapped["username"] = _database_login_username()
+    return mapped
+
+
 def _materialize_database_profile_for_driver(profile: dict) -> dict:
     """Materialize env-backed database secrets for runtime driver calls only."""
-    materialized = dict(profile)
+    materialized = _apply_database_login_username(profile)
     secret = _database_raw_secret(materialized)
     if secret:
         materialized["password"] = secret
@@ -445,7 +579,7 @@ def _materialize_database_profile_for_driver(profile: dict) -> dict:
 
 def _database_profile_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Normalize a database profile without writing it to disk."""
-    return _database_store()._normalize(dict(payload), for_write=True)
+    return _database_store()._normalize(_apply_database_login_username(dict(payload)), for_write=True)
 
 
 def _database_payload_without_transient_secrets(payload: dict[str, Any]) -> dict[str, Any]:
@@ -472,8 +606,9 @@ def _safe_env_fragment(value: str) -> str:
     return fragment or "MAIN_DATABASE"
 
 
-def _database_secret_env_name(profile_id: str) -> str:
-    return f"{DB_SECRET_ENV_PREFIX}_{_safe_env_fragment(profile_id)}_API_KEY"
+def _database_secret_env_name(profile_id: str, database_type: str | None = None) -> str:
+    suffix = "API_KEY" if str(database_type or "").lower() == "supabase_rpc" else "PASSWORD"
+    return f"{DB_SECRET_ENV_PREFIX}_{_safe_env_fragment(profile_id)}_{suffix}"
 
 
 def _database_secret_env(profile: dict[str, Any]) -> str:
@@ -517,38 +652,42 @@ def _apply_secret_env_reference(profile: dict[str, Any], env_var: str) -> dict[s
 
 
 def _prepare_database_payload_for_env(payload: dict[str, Any]) -> dict[str, Any]:
-    """Move transient database API keys/passwords into .env before profile storage.
-
-    Base URL and non-secret metadata stay in the profile. Secret values are never
-    persisted in the JSON profile store; only password_env/api_key_env/secret_env
-    references are stored.
-    """
-    prepared = dict(payload)
+    """Classify a unified DB payload and move transient secrets into .env."""
+    prepared = _apply_database_login_username(normalize_database_connection_payload(dict(payload)))
     profile_id = str(prepared.get("profile_id") or "main_database")
+    database_type = str(prepared.get("database_type") or prepared.get("driver") or "").lower()
+    authentication = str(prepared.get("authentication") or "").lower()
+    secret_required = database_type not in {"sqlite"} and not (database_type == "sqlserver" and authentication == "windows")
+
     raw_secret = (
-        prepared.get("raw_secret")
-        or prepared.get("api_key")
-        or prepared.get("password")
-        or prepared.get("raw_api_key")
-        or prepared.get("raw_password")
-        or ""
-    )
+        prepared.get("api_key") if database_type == "supabase_rpc" else prepared.get("password")
+    ) or prepared.get("raw_secret") or prepared.get("raw_api_key") or prepared.get("raw_password") or ""
     raw_secret = str(raw_secret).strip() if raw_secret is not None else ""
-    preserve_secret = bool(prepared.pop("preserve_secret", False))
+    preserve_secret = bool(prepared.pop("preserve_secret", False)) and secret_required
+    existing_env_var = _database_secret_env(prepared)
+    already_env_backed = bool(
+        existing_env_var
+        and secret_required
+        and (
+            str(prepared.get("secret_mode") or "").lower() == "env"
+            or str(prepared.get("password_mode") or "").lower() == "env"
+            or bool(prepared.get("has_raw_secret"))
+        )
+    )
 
-    active_user = _active_user_profile()
-    if active_user and active_user.get("username"):
-        # Database Management username is bound to the SAFY backend user profile.
-        # Connection URL/secret stay in the database profile/env, while username
-        # represents the current SAFY actor for DB-related operations.
-        prepared["username"] = active_user["username"]
-    elif not prepared.get("username"):
-        prepared["username"] = ""
-
-    if raw_secret:
-        env_var = str(prepared.get("secret_env") or prepared.get("api_key_env") or prepared.get("password_env") or _database_secret_env_name(profile_id)).strip()
+    if raw_secret and secret_required:
+        env_var = str(
+            existing_env_var
+            or _database_secret_env_name(profile_id, database_type)
+        ).strip()
         _write_secret_to_env(env_var, raw_secret)
         return _apply_secret_env_reference(prepared, env_var)
+
+    # Idempotency is required because the canonical save endpoint normalizes a
+    # payload before testing it and then sends the normalized profile through the
+    # common save helper. Do not erase a valid env reference on that second pass.
+    if already_env_backed:
+        return _apply_secret_env_reference(prepared, existing_env_var)
 
     if preserve_secret:
         try:
@@ -558,21 +697,20 @@ def _prepare_database_payload_for_env(payload: dict[str, Any]) -> dict[str, Any]
         env_var = _database_secret_env(existing)
         legacy_secret = _legacy_database_secret_value(existing)
         if not env_var and legacy_secret:
-            env_var = _database_secret_env_name(profile_id)
+            env_var = _database_secret_env_name(profile_id, database_type)
             _write_secret_to_env(env_var, legacy_secret)
         if env_var:
             return _apply_secret_env_reference(prepared, env_var)
 
     for key in ("api_key", "raw_secret", "password", "raw_api_key", "raw_password", "secret", "token"):
         prepared.pop(key, None)
-    prepared.setdefault("secret_mode", "none")
-    prepared.setdefault("password_mode", "none")
-    prepared.setdefault("password_env", "")
-    prepared.setdefault("api_key_env", "")
-    prepared.setdefault("secret_env", "")
-    prepared.setdefault("has_raw_secret", False)
+    prepared["secret_mode"] = "none"
+    prepared["password_mode"] = "none"
+    prepared["password_env"] = ""
+    prepared["api_key_env"] = ""
+    prepared["secret_env"] = ""
+    prepared["has_raw_secret"] = False
     return prepared
-
 
 def _merge_existing_secret_if_requested(payload: dict[str, Any]) -> dict[str, Any]:
     """Backward-compatible wrapper for old preserve_secret callers.
@@ -610,6 +748,26 @@ def _database_raw_secret(profile: dict[str, Any]) -> str | None:
     env_var = _database_secret_env(profile)
     if env_var:
         return _resolve_env_secret(env_var)
+
+    # Compatibility recovery for profiles affected by the former save bug: the
+    # deterministic secret was written to .env during Test/Save, while the saved
+    # profile lost password_env/secret_env during a second normalization pass.
+    database_type = str(profile.get("database_type") or profile.get("driver") or profile.get("dbms") or "").lower()
+    authentication = str(profile.get("authentication") or "").lower()
+    secret_required = database_type not in {"", "sqlite"} and not (
+        database_type == "sqlserver" and authentication == "windows"
+    )
+    if secret_required:
+        fallback_env = _database_secret_env_name(
+            str(profile.get("profile_id") or "main_database"),
+            database_type,
+        )
+        try:
+            return _resolve_env_secret(fallback_env)
+        except DriverError as exc:
+            if exc.error_code not in {"SECRET_ENV_MISSING", "VALIDATION_ERROR"}:
+                raise
+
     value = _legacy_database_secret_value(profile)
     return value or None
 
@@ -921,9 +1079,11 @@ def _database_endpoint_key(profile: dict[str, Any]) -> str:
     if driver in {"postgres", "postgresql", "mysql", "sqlserver", "oracle"}:
         host = str(profile.get("host") or "").strip().lower()
         port = str(profile.get("port") or "").strip()
-        database = str(profile.get("database") or "").strip().lower()
+        database = str(profile.get("database") or profile.get("service_name") or profile.get("sid") or "").strip().lower()
         username = str(profile.get("username") or "").strip().lower()
-        return f"{driver}:{host}:{port}:{database}:{username}"
+        instance = str(profile.get("instance") or "").strip().lower()
+        authentication = str(profile.get("authentication") or "").strip().lower()
+        return f"{driver}:{host}:{port}:{instance}:{database}:{authentication}:{username}"
     if driver == "sqlite":
         db_path = str(profile.get("sqlite_path") or profile.get("database") or "").strip()
         return f"sqlite:{Path(db_path).expanduser().resolve() if db_path else ''}"
@@ -947,10 +1107,22 @@ def _database_endpoint_conflict(profile: dict[str, Any], profile_id: str | None 
 def _schema_graph_for_profile(profile: dict[str, Any] | None) -> dict[str, Any]:
     if not profile:
         return SCHEMA_GRAPH_STORE.get("", {})
+    blocked = _system_database_grounding_block(profile)
+    if blocked:
+        graph = empty_schema_graph(profile)
+        graph.update({
+            "status": "blocked",
+            "error_code": blocked["code"],
+            "message": blocked["message"],
+        })
+        return graph
     return SCHEMA_GRAPH_STORE.get(str(profile.get("profile_id") or "main_database"), profile)
 
 
 def _introspect_database_schema(profile: dict[str, Any]) -> dict[str, Any]:
+    blocked = _system_database_grounding_block(profile)
+    if blocked:
+        raise DriverError(blocked["code"], blocked["message"], blocked["details"])
     return driver_get_schema(_materialize_database_profile_for_driver(profile))
 
 
@@ -997,15 +1169,12 @@ def active_database_profile():
         status_payload = {
             **_public_database_profile(active),
             "mode": "real" if is_real_profile else "not_connected",
-            "connection_status": "unknown",
+            "connection_status": active.get("last_test_status") or "unknown",
+            "last_test_status": active.get("last_test_status"),
+            "last_test_at": active.get("last_test_at"),
+            "last_test_error_code": active.get("last_test_error_code"),
             "read_only": bool(active.get("read_only", True)),
         }
-        if status_payload["mode"] == "real":
-            try:
-                result = _test_database_profile_dict(active)
-                status_payload["connection_status"] = "connected" if result.get("success") else "failed"
-            except DriverError:
-                status_payload["connection_status"] = "failed"
         return envelope(status_payload)
     except ProfileStoreError as exc:
         return error_envelope(exc.code, str(exc), exc.details)
@@ -1075,7 +1244,12 @@ def schema_graph_active_refresh():
             return envelope({**empty_schema_graph(), "message": "No active database."})
         raw_schema = _introspect_database_schema(profile)
         graph = SCHEMA_GRAPH_STORE.save_from_schema(raw_schema, profile)
-        return envelope(graph)
+        invalidation = _invalidate_runtime_bindings(
+            "schema_graph_refreshed",
+            clear_context=False,
+            database_profile_id=str(profile.get("profile_id") or "") or None,
+        )
+        return envelope({**graph, "binding_invalidation": invalidation})
     except ProfileStoreError as exc:
         return error_envelope(exc.code, str(exc), exc.details)
     except SchemaGraphStoreError as exc:
@@ -1090,7 +1264,13 @@ def schema_graph_active_delete():
         profile = _active_database_profile_raw()
         if not profile:
             return envelope({"deleted": False, "status": "empty"})
-        return envelope(SCHEMA_GRAPH_STORE.delete(str(profile.get("profile_id"))))
+        deleted = SCHEMA_GRAPH_STORE.delete(str(profile.get("profile_id")))
+        invalidation = _invalidate_runtime_bindings(
+            "schema_graph_deleted",
+            clear_context=False,
+            database_profile_id=str(profile.get("profile_id") or "") or None,
+        )
+        return envelope({**deleted, "binding_invalidation": invalidation})
     except (ProfileStoreError, SchemaGraphStoreError) as exc:
         return error_envelope(getattr(exc, "code", "SCHEMA_GRAPH_ERROR"), str(exc), getattr(exc, "details", {}))
 
@@ -1098,7 +1278,9 @@ def schema_graph_active_delete():
 @app.delete("/schema-graph")
 def schema_graph_reset():
     try:
-        return envelope(SCHEMA_GRAPH_STORE.reset())
+        reset = SCHEMA_GRAPH_STORE.reset()
+        invalidation = _invalidate_runtime_bindings("schema_graph_reset", clear_context=False)
+        return envelope({**reset, "binding_invalidation": invalidation})
     except SchemaGraphStoreError as exc:
         return error_envelope(exc.code, str(exc), exc.details)
 
@@ -1207,8 +1389,15 @@ def agent_chat(payload: AgentChatRequest):
                 # workflow actually needs the model.
                 pass
 
-        # 2. Resolve target="auto" only for explicit database execution.
-        # Normal chat should not silently route through database/sandbox.
+        # 2. Preserve the active database as trusted context for semantic routing.
+        # The backend remains the authority: normal chat may still stay chat, but
+        # natural-language DB intents no longer depend on frontend regex gates.
+        active_hint = payload.options.get("active_database_profile_id") if isinstance(payload.options, dict) else None
+        if not payload.database_profile_id and active_hint:
+            payload.database_profile_id = str(active_hint)
+
+        # 3. Resolve target="auto" only for explicit database execution.
+        # Normal chat should not silently execute against database/sandbox.
         if payload.target == "auto" and command_mode == "execute":
             profiles = _database_store().read_all()
             active_db = next((p for p in profiles if p.get("active")), None)
@@ -1243,7 +1432,13 @@ def agent_chat(payload: AgentChatRequest):
 def agent_generate_sql(payload: AgentChatRequest):
     try:
         generated = AGENT_RUNTIME.generate_sql(payload.message, payload.model_profile_id, payload.target, payload.sandbox_id, payload.database_profile_id, session_id=payload.session_id or payload.chat_id)
-        return envelope({"generated_sql": generated["generated_sql"], "target": generated["target"]})
+        return envelope({
+            "generated_sql": generated["generated_sql"],
+            "target": generated["target"],
+            "action_plan": generated.get("action_plan"),
+            "consistency": generated.get("consistency"),
+            "blocked": bool(generated.get("blocked")),
+        })
     except ModelProfileError as exc:
         return model_profile_error(exc)
     except Exception as exc:
@@ -1755,11 +1950,12 @@ def _ensure_sandbox_for_database_profile(profile: dict) -> dict:
 
 @app.post("/database-profiles/test")
 
-def test_database_profile_payload(payload: dict):
+def test_database_profile_payload(payload: DatabaseProfilePayload):
     try:
         # Test Connection may receive a transient raw API key. Normalize it into
         # .env for this local runtime, but do not save the database profile.
-        normalized = _database_profile_from_payload(_prepare_database_payload_for_env({**payload, "active": False}))
+        raw_payload = payload.model_dump(exclude_none=False, by_alias=True)
+        normalized = _database_profile_from_payload(_prepare_database_payload_for_env({**raw_payload, "active": False}))
         connection_result = _test_database_profile_dict(normalized)
         return envelope({"connection_status": "connected", "connection_result": connection_result, "profile_preview": _public_database_profile(normalized), "saved": False})
     except ProfileStoreError as exc:
@@ -1769,16 +1965,17 @@ def test_database_profile_payload(payload: dict):
 
 
 @app.post("/database-profiles")
-def save_database_profile(payload: dict):
+def save_database_profile(payload: DatabaseProfilePayload):
     try:
-        display_name = str(payload.get("display_name") or payload.get("profile_name") or "Main database").strip()
-        profile_id = str(payload.get("profile_id") or "main_database").strip()
+        raw_payload = payload.model_dump(exclude_none=False, by_alias=True)
+        display_name = str(raw_payload.get("display_name") or raw_payload.get("profile_name") or "Main database").strip()
+        profile_id = str(raw_payload.get("profile_id") or "main_database").strip()
         conflict = _database_name_conflict(display_name, profile_id)
         if conflict:
             return error_envelope("DATABASE_NAME_ALREADY_EXISTS", "Database name already exists. Choose another name before saving.", {"display_name": display_name, "existing_profile_id": conflict.get("profile_id")})
 
         # Duplicate endpoint checks must not run on raw secret-bearing payloads.
-        preview_profile = _database_profile_from_payload(_database_payload_without_transient_secrets({**payload, "active": bool(payload.get("active", True))}))
+        preview_profile = _database_profile_from_payload(_database_payload_without_transient_secrets({**raw_payload, "active": bool(raw_payload.get("active", True))}))
         endpoint_conflict = _database_endpoint_conflict(preview_profile, profile_id)
         if endpoint_conflict:
             return error_envelope(
@@ -1792,7 +1989,7 @@ def save_database_profile(payload: dict):
             )
 
         # Move raw API key/password to .env before ANY profile normalization/save.
-        prepared = _prepare_database_payload_for_env({**payload, "active": bool(payload.get("active", True))})
+        prepared = _prepare_database_payload_for_env({**raw_payload, "active": bool(raw_payload.get("active", True))})
         normalized = _database_profile_from_payload(prepared)
         endpoint_key = _database_endpoint_key(normalized)
         connection_result = _test_database_profile_dict(normalized)
@@ -1811,20 +2008,20 @@ def save_database_profile(payload: dict):
 def activate_database_profile(profile_id: str):
     try:
         stores = _database_store()
-        profiles = stores.read_all()
-        target = None
-        for profile in profiles:
-            is_target = profile["profile_id"] == profile_id
-            profile["active"] = is_target
-            stores.save(profile, overwrite=True)
-            if is_target:
-                target = profile
-        if not target:
-            raise ProfileStoreError("PROFILE_NOT_FOUND", f"Profile not found: {profile_id}")
+        target = stores.activate(profile_id)
     except ProfileStoreError as exc:
         return error_envelope(exc.code, str(exc), exc.details)
-    schema = SCHEMA_GRAPH_STORE.get(str(target.get("profile_id")), target)
-    return envelope({**_public_database_profile(target), "schema_graph": {"status": schema.get("status"), "table_count": schema.get("table_count", 0), "edge_count": schema.get("edge_count", 0)}})
+    invalidation = _invalidate_runtime_bindings("database_profile_activated", clear_context=True)
+    schema = _schema_graph_for_profile(target)
+    return envelope({
+        **_public_database_profile(target),
+        "schema_graph": {
+            "status": schema.get("status"),
+            "table_count": schema.get("table_count", 0),
+            "edge_count": schema.get("edge_count", 0),
+        },
+        "binding_invalidation": invalidation,
+    })
 
 
 @app.post("/database-profiles/{profile_id}/test")
@@ -1928,6 +2125,7 @@ def query_check(payload: QueryCheckRequest):
     permission_mode = payload.user_query_access_mode
     database_profile = None
     database_profile_id = payload.database_profile_id
+    session_id = payload.session_id or payload.chat_id
     if payload.target == "connected_database" and not database_profile_id:
         active = _active_database_profile_raw()
         database_profile_id = active.get("profile_id") if active else None
@@ -1946,6 +2144,17 @@ def query_check(payload: QueryCheckRequest):
         # The saved database profile is the authority for query permissions.
         # Never let a request body escalate read_only/disabled to credential_permissions.
         permission_mode = str(database_profile.get("user_query_access_mode") or permission_mode)
+    binding = _authoritative_query_binding(
+        session_id=session_id,
+        profile=database_profile,
+        fallback_context_generation=payload.context_generation,
+        fallback_schema_generation=payload.schema_generation,
+        fallback_driver=payload.driver,
+        fallback_dialect=payload.dialect,
+    )
+    binding_error = _binding_request_error(payload, binding)
+    if binding_error:
+        return error_envelope(binding_error[0], binding_error[1])
     effective_real_db_mode = bool(payload.real_db_mode or (payload.target == "connected_database" and database_profile is not None))
     check = QUERY_ORCHESTRATOR.check(
         sql=payload.sql,
@@ -1957,11 +2166,14 @@ def query_check(payload: QueryCheckRequest):
         real_db_mode=effective_real_db_mode,
         database_profile=database_profile,
         sandbox_id=payload.sandbox_id or (f"db_{database_profile_id}" if database_profile_id else None),
+        context_generation=binding.get("context_generation"),
+        schema_generation=binding.get("schema_generation"),
+        driver=binding.get("driver"),
+        dialect=binding.get("dialect"),
     )
     check["real_db_mode"] = bool(effective_real_db_mode)
     if payload.real_db_mode and check.get("allowed_to_attempt") is False and check.get("statement_type") == "INSERT":
         check["error_code"] = "DB_INSERT_BLOCKED"
-    session_id = payload.session_id or payload.chat_id
     if session_id:
         AGENT_RUNTIME.record_check_result(session_id, check, sql=payload.sql)
     return envelope(check)
@@ -1973,29 +2185,60 @@ def query_execute(payload: QueryExecuteRequest):
     # materialized env-backed profile before execution. This prevents a successful
     # Test Connection / Check Safety path from failing execution because the
     # in-memory check stored a stale or non-materialized profile.
+    database_profile = None
     if payload.target == "connected_database" and payload.database_profile_id:
         check_record = QUERY_ORCHESTRATOR.checks.get(payload.check_id or "")
         if check_record and check_record.get("database_profile_id") == payload.database_profile_id:
             try:
-                check_record["database_profile"] = _materialize_database_profile_for_driver(_database_store().get(payload.database_profile_id))
+                database_profile = _materialize_database_profile_for_driver(_database_store().get(payload.database_profile_id))
+                check_record["database_profile"] = database_profile
                 check_record["real_db_mode"] = True
             except ProfileStoreError as exc:
                 return error_envelope(exc.code, str(exc), exc.details)
             except DriverError as exc:
                 return error_envelope(exc.error_code, str(exc), exc.details)
 
+    session_id = payload.session_id or payload.chat_id
+    binding = _authoritative_query_binding(
+        session_id=session_id,
+        profile=database_profile,
+        fallback_context_generation=payload.context_generation,
+        fallback_schema_generation=payload.schema_generation,
+        fallback_driver=payload.driver,
+        fallback_dialect=payload.dialect,
+    )
+    binding_error = _binding_request_error(payload, binding)
+    if binding_error:
+        return error_envelope(binding_error[0], binding_error[1])
+
     checked = QUERY_ORCHESTRATOR.checks.get(payload.check_id or "")
     schema_change_expected = bool(checked and checked.get("invalidates_schema_snapshot"))
-    ok, result = QUERY_ORCHESTRATOR.execute(
-        check_id=payload.check_id,
-        sql_hash=payload.sql_hash,
-        target=payload.target,
-        user_decision=payload.user_decision,
-        confirmation_code=payload.confirmation_code,
-        database_profile_id=payload.database_profile_id,
-        row_limit=payload.row_limit,
-        sandbox_id=payload.sandbox_id,
-    )
+    try:
+        ok, result = QUERY_ORCHESTRATOR.execute(
+            check_id=payload.check_id,
+            sql_hash=payload.sql_hash,
+            target=payload.target,
+            user_decision=payload.user_decision,
+            confirmation_code=payload.confirmation_code,
+            database_profile_id=payload.database_profile_id,
+            row_limit=payload.row_limit,
+            sandbox_id=payload.sandbox_id,
+            context_generation=binding.get("context_generation"),
+            schema_generation=binding.get("schema_generation"),
+            driver=binding.get("driver"),
+            dialect=binding.get("dialect"),
+        )
+    except DriverError as exc:
+        return error_envelope(exc.error_code, str(exc), exc.details)
+    except Exception as exc:
+        # Driver/query failures must never escape as an unstructured HTTP 500.
+        # The exact reason is redacted and returned through SAFY's normal API
+        # envelope so the dashboard can render an actionable error.
+        return error_envelope(
+            "QUERY_EXECUTION_FAILED",
+            redact_text(str(exc)) or "Database execution failed.",
+            {"exception_type": type(exc).__name__},
+        )
     if ok and schema_change_expected and payload.database_profile_id:
         result["schema_changed"] = True
         result["schema_refresh_required"] = True
@@ -2003,9 +2246,14 @@ def query_execute(payload: QueryExecuteRequest):
             result["schema_graph_invalidation"] = SCHEMA_GRAPH_STORE.delete(payload.database_profile_id)
         except SchemaGraphStoreError as exc:
             result.setdefault("warnings", []).append(f"Schema graph invalidation failed: {exc.code}")
-    session_id = payload.session_id or payload.chat_id
     if session_id:
-        AGENT_RUNTIME.record_execute_result(session_id, result)
+        try:
+            AGENT_RUNTIME.record_execute_result(session_id, result)
+        except Exception:
+            # Session/audit projection is secondary to database execution. Never
+            # turn a completed query into HTTP 500 because chat persistence failed.
+            if isinstance(result, dict):
+                result.setdefault("warnings", []).append("session_execute_result_not_recorded")
     if not ok:
         return error_envelope(result["code"], result["message"], result.get("details", {}))
     return envelope(result)

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, datetime, time as datetime_time
+from decimal import Decimal
 from typing import Any, Protocol
+from uuid import UUID
 import os
 import re
 import time
@@ -60,6 +63,39 @@ def error_envelope(exc: Exception, driver: str, profile: dict[str, Any]) -> dict
 def is_sensitive_name(name: str) -> bool:
     return bool(SENSITIVE_NAME_RE.search(name or ""))
 
+
+def json_safe_value(value: Any) -> Any:
+    """Convert database-native values into deterministic JSON-safe values.
+
+    SQL Server commonly returns ``Decimal``, date/time, UUID, and binary values.
+    Passing those objects through FastAPI unchanged can raise a response-encoding
+    exception after the query itself succeeded, which surfaces to the browser as
+    an HTTP 500. Preserve precision for decimals, use ISO-8601 for temporal
+    values, and never expose raw binary payloads.
+    """
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, (datetime, date, datetime_time)):
+        return value.isoformat()
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return f"[BINARY {len(value)} bytes]"
+    if isinstance(value, dict):
+        return {str(key): json_safe_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [json_safe_value(item) for item in value]
+    isoformat = getattr(value, "isoformat", None)
+    if callable(isoformat):
+        try:
+            return isoformat()
+        except Exception:
+            pass
+    return str(value)
+
+
 def bounded_row_limit(value: Any, default: int = DEFAULT_ROW_LIMIT) -> int:
     """Normalize result limits at the driver boundary.
 
@@ -86,7 +122,7 @@ def fetch_rows(cursor: Any, row_limit: int) -> tuple[list[str], list[dict[str, A
             item = {col: row.get(col) for col in columns}
         else:
             item = {col: row[idx] for idx, col in enumerate(columns)}
-        rows.append(redact_obj(item))
+        rows.append(redact_obj(json_safe_value(item)))
     return columns, rows, truncated, len(rows)
 
 def query_result(driver: str, profile: dict[str, Any], cursor: Any, started: float, row_limit: int, warnings: list[str] | None = None) -> dict[str, Any]:

@@ -27,8 +27,8 @@ def test_skill_tree_is_canonical_and_contract_valid():
         if path.is_dir() and path.name != path.name.lower():
             legacy.append(path.name)
     assert not legacy
-    assert not list((root / "Skills").rglob("Skill.md"))
-    assert not list((root / "Skills").rglob("skill.md"))
+    assert not [path for path in (root / "Skills").rglob("*.md") if path.name in {"Skill.md", "skill.md"}]
+    assert list((root / "Skills").rglob("SKILL.md"))
     assert validate_skills() == 0
 
 

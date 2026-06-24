@@ -69,3 +69,17 @@ def execute_user_sql(sql: str, profile: dict[str, Any], secret_context: dict[str
     if not hasattr(driver, "execute_user_sql"):
         raise DriverError("DB_USER_EXECUTION_UNSUPPORTED", f"{driver_name(profile)} driver does not support user-controlled write execution.")
     return driver.execute_user_sql(sql, profile, _secret(secret_context), options)
+
+
+def adapt_readonly_sql(sql: str, profile: dict[str, Any]) -> str:
+    """Apply a driver-specific read-only SQL dialect adaptation before hashing.
+
+    The returned SQL is the exact statement that Check Safety stores and Execute
+    later runs. Drivers without an adapter receive the original SQL unchanged.
+    """
+    resolved = resolve_provider_profile(profile)
+    driver = get_driver(resolved)
+    adapter = getattr(driver, "adapt_readonly_sql", None) if driver is not None else None
+    if callable(adapter):
+        return str(adapter(sql))
+    return sql

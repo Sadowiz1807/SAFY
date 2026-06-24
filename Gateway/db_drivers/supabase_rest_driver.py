@@ -384,11 +384,42 @@ class SupabaseRpcDriver:
             tables=tables,
             relationships=relationships,
         )
+    def _read_rpc_function(self, profile: dict[str, Any]) -> str | None:
+        raw = str(profile.get("read_rpc_function") or os.getenv("SAFY_SUPABASE_READ_RPC_FUNCTION") or "").strip()
+        if not raw:
+            return None
+        return _clean_rpc_name(raw)
+
+    def _read_rpc_argument(self, profile: dict[str, Any]) -> str:
+        raw = str(profile.get("read_rpc_argument") or profile.get("sql_rpc_argument") or "sql").strip()
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", raw):
+            raise DriverError("SUPABASE_RPC_ARGUMENT_INVALID", "Supabase read RPC argument name is invalid.", {"rpc_argument": raw})
+        return raw
+
+    def _execute_read_rpc(self, sql: str, profile: dict[str, Any], row_limit: int) -> dict[str, Any]:
+        classification = classify_sql(sql)
+        if not classification.is_read_only:
+            raise DriverError("SUPABASE_REST_SQL_UNSUPPORTED", "Only read-only SQL can use Supabase read RPC.")
+        function = self._read_rpc_function(profile)
+        if not function:
+            raise DriverError("SUPABASE_READ_RPC_NOT_CONFIGURED", "Complex Supabase read-only SQL requires a configured read RPC or a native PostgreSQL profile.")
+        argument = self._read_rpc_argument(profile)
+        started = time.perf_counter()
+        try:
+            data, status = self._request_json(profile, self._base_url(profile) + "/rpc/" + function, method="POST", body={argument: sql}, operation="execute_read_rpc")
+        except DriverError as exc:
+            raise DriverError("SUPABASE_READ_RPC_FAILED", "Supabase read RPC failed.", {"provider_error_code": exc.error_code, **exc.details}) from exc
+        rows = data if isinstance(data, list) else ([data] if isinstance(data, dict) else [])
+        rows = rows[:row_limit]
+        columns = sorted({key for row in rows if isinstance(row, dict) for key in row.keys()})
+        metadata = {"execution_id": f"exec_supabase_read_rpc_{int(started * 1000000)}", "row_count": len(rows), "truncated": False, "execution_time_ms": int((time.perf_counter() - started) * 1000), "row_limit": row_limit, "read_only": True, "no_result_persistence": True, "status_code": status, "execution_transport": "postgrest_read_rpc", "rpc_function": function}
+        return success_envelope(self.driver, profile, metadata, columns=columns, rows=rows, row_count=len(rows), truncated=False)
+
     def execute_readonly(self, sql: str, profile: dict[str, Any], secret_context: SecretContext | None = None, options: dict[str, Any] | None = None) -> dict[str, Any]:
         match = _SIMPLE_SELECT_RE.match(sql or "")
-        if not match:
-            raise DriverError("SUPABASE_SQL_REQUIRES_RPC", "Supabase API mode can only run simple SELECT through REST. Use the approved SQL RPC for arbitrary SQL after sandbox validation.")
         row_limit = bounded_row_limit((options or {}).get("row_limit"), DEFAULT_ROW_LIMIT)
+        if not match:
+            return self._execute_read_rpc(sql, profile, row_limit)
         limit = min(int(match.group("limit") or row_limit), row_limit)
         table = match.group("table").split(".")[-1]
         columns = match.group("columns").strip()

@@ -16,7 +16,24 @@ class PostgresDriver:
             raise DriverError("DB_DRIVER_UNAVAILABLE", "psycopg v3 is not installed. Install requirements-db.txt.") from exc
         password=resolve_secret(profile, secret_context)
         try:
-            conn=psycopg.connect(host=profile.get("host") or "127.0.0.1", port=int(profile.get("port") or 5432), dbname=profile.get("database"), user=profile.get("username") or None, password=password, connect_timeout=5, row_factory=dict_row)
+            ssl_mode = str(profile.get("ssl_mode") or "preferred").strip().lower()
+            ssl_mode = {
+                "disabled": "disable",
+                "preferred": "prefer",
+                "required": "require",
+                "verify_ca": "verify-ca",
+                "verify_identity": "verify-full",
+            }.get(ssl_mode, ssl_mode)
+            conn=psycopg.connect(
+                host=profile.get("host") or "127.0.0.1",
+                port=int(profile.get("port") or 5432),
+                dbname=profile.get("database"),
+                user=profile.get("username") or None,
+                password=password,
+                connect_timeout=int(profile.get("timeout_seconds") or 15),
+                sslmode=ssl_mode,
+                row_factory=dict_row,
+            )
             conn.autocommit=True
             if read_only:
                 conn.read_only=True

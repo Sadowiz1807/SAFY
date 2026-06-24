@@ -41,6 +41,10 @@ class AgentWorkflowState:
     last_safety_result: dict[str, Any] | None = None
     last_execution_result: dict[str, Any] | None = None
     last_error: dict[str, Any] | None = None
+    current_driver: str | None = None
+    current_dialect: str | None = None
+    schema_generation: str | None = None
+    context_generation: int = 0
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "AgentWorkflowState":
@@ -59,6 +63,7 @@ class AgentWorkflowState:
             state.last_table_columns = []
         if state.workflow_history is None:
             state.workflow_history = []
+        state.sanitize_restored_context()
         return state
 
     def to_dict(self) -> dict[str, Any]:
@@ -88,6 +93,10 @@ class AgentWorkflowState:
             "last_safety_result": self.last_safety_result,
             "last_execution_result": self.last_execution_result,
             "last_error": self.last_error,
+            "current_driver": self.current_driver,
+            "current_dialect": self.current_dialect,
+            "schema_generation": self.schema_generation,
+            "context_generation": self.context_generation,
         }
 
     def has_pending(self) -> bool:
@@ -110,7 +119,123 @@ class AgentWorkflowState:
         self.required_slots = []
         self.filled_slots = {}
 
+    def invalidate_execution_context(self) -> None:
+        self.last_sql = None
+        self.last_sql_hash = None
+        self.last_check_id = None
+        self.last_safety_result = None
+        self.pending_confirmation = None
+
+    def invalidate_bound_context(self, *, clear_context: bool = False) -> None:
+        """Invalidate state that was bound to a database/schema generation.
+
+        External events such as profile activation and schema refresh may occur
+        outside the current chat. They must revoke any draft/check material in
+        every session. Profile activation additionally clears the selected
+        target so a later request has to resolve the active profile again.
+        """
+        self.invalidate_execution_context()
+        self.last_execution_result = None
+        self.schema_generation = None
+        if clear_context:
+            self.current_database = None
+            self.current_target = None
+            self.current_sandbox_id = None
+            self.current_database_profile_id = None
+            self.current_driver = None
+            self.current_dialect = None
+        self.context_generation += 1
+
+    def _invalidate_restored_context(self) -> None:
+        self.current_target = None
+        self.current_sandbox_id = None
+        self.current_database_profile_id = None
+        self.invalidate_execution_context()
+        self.context_generation += 1
+
+    def sanitize_restored_context(self) -> None:
+        target = self.current_target
+        contradictory = False
+        if target == "connected_database":
+            if not self.current_database_profile_id:
+                self._invalidate_restored_context()
+                return
+            if self.current_sandbox_id is not None:
+                self.current_sandbox_id = None
+                contradictory = True
+        elif target == "sandbox":
+            if not self.current_sandbox_id:
+                self._invalidate_restored_context()
+                return
+            if self.current_database_profile_id is not None:
+                self.current_database_profile_id = None
+                contradictory = True
+        elif target in (None, ""):
+            if self.current_sandbox_id or self.current_database_profile_id:
+                self.current_sandbox_id = None
+                self.current_database_profile_id = None
+                contradictory = True
+        else:
+            self._invalidate_restored_context()
+            return
+        if contradictory:
+            self.invalidate_execution_context()
+            self.context_generation += 1
+
+    def transition_context(
+        self,
+        *,
+        target: str | None,
+        sandbox_id: str | None = None,
+        database_profile_id: str | None = None,
+        database_name: str | None = None,
+        driver: str | None = None,
+        dialect: str | None = None,
+        schema_generation: str | None = None,
+    ) -> None:
+        next_target = target or self.current_target
+        changed = False
+        if next_target == "connected_database":
+            if not database_profile_id:
+                raise ValueError("database_profile_id is required for connected_database context")
+            changed = changed or self.current_target != next_target or self.current_database_profile_id != database_profile_id or self.current_sandbox_id is not None
+            self.current_target = next_target
+            self.current_database_profile_id = database_profile_id
+            self.current_sandbox_id = None
+        elif next_target == "sandbox":
+            if not sandbox_id:
+                raise ValueError("sandbox_id is required for sandbox context")
+            changed = changed or self.current_target != next_target or self.current_sandbox_id != sandbox_id or self.current_database_profile_id is not None
+            self.current_target = next_target
+            self.current_sandbox_id = sandbox_id
+            # A sandbox may be derived from a database profile, but it is not the
+            # execution target. Avoid serializing an opposing connected profile.
+            self.current_database_profile_id = None
+        else:
+            changed = changed or self.current_target != next_target
+            self.current_target = next_target
+            self.current_sandbox_id = None
+            self.current_database_profile_id = None
+        if database_name is not None:
+            changed = changed or self.current_database != database_name
+            self.current_database = database_name
+        if driver is not None:
+            changed = changed or self.current_driver != driver
+            self.current_driver = driver
+        if dialect is not None:
+            changed = changed or self.current_dialect != dialect
+            self.current_dialect = dialect
+        if schema_generation is not None:
+            changed = changed or self.schema_generation != schema_generation
+            self.schema_generation = schema_generation
+        if changed:
+            self.context_generation += 1
+            self.invalidate_execution_context()
+
     def remember_context(self, *, target: str | None, sandbox_id: str | None, database_profile_id: str | None, database_name: str | None = None) -> None:
+        if target in {"connected_database", "sandbox"}:
+            self.transition_context(target=target, sandbox_id=sandbox_id, database_profile_id=database_profile_id, database_name=database_name)
+            return
         if target:
             self.current_target = target
         if sandbox_id:

@@ -15,7 +15,27 @@ class MySQLDriver:
             raise DriverError("DB_DRIVER_UNAVAILABLE", "pymysql is not installed. Install requirements-db.txt.") from exc
         password = resolve_secret(profile, secret_context)
         try:
-            conn = pymysql.connect(host=profile.get("host") or "127.0.0.1", port=int(profile.get("port") or 3306), user=profile.get("username") or None, password=password, database=profile.get("database") or None, connect_timeout=5, read_timeout=int(profile.get("timeout_seconds") or 90), write_timeout=5, cursorclass=pymysql.cursors.DictCursor, autocommit=True)
+            ssl_mode = str(profile.get("ssl_mode") or "preferred").strip().lower()
+            ssl_options: dict[str, Any] = {}
+            if ssl_mode == "disabled":
+                ssl_options["ssl_disabled"] = True
+            elif ssl_mode in {"required", "verify_ca", "verify_identity"}:
+                ssl_options["ssl"] = {}
+                ssl_options["ssl_verify_cert"] = ssl_mode in {"verify_ca", "verify_identity"}
+                ssl_options["ssl_verify_identity"] = ssl_mode == "verify_identity"
+            conn = pymysql.connect(
+                host=profile.get("host") or "127.0.0.1",
+                port=int(profile.get("port") or 3306),
+                user=profile.get("username") or None,
+                password=password,
+                database=profile.get("database") or None,
+                connect_timeout=int(profile.get("timeout_seconds") or 15),
+                read_timeout=int(profile.get("timeout_seconds") or 90),
+                write_timeout=int(profile.get("timeout_seconds") or 15),
+                cursorclass=pymysql.cursors.DictCursor,
+                autocommit=True,
+                **ssl_options,
+            )
             if read_only:
                 with conn.cursor() as cur:
                     cur.execute("SET SESSION TRANSACTION READ ONLY")

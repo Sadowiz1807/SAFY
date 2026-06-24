@@ -2,8 +2,8 @@
 
 **Document status:** `CURRENT` / operational implementation snapshot  
 **Project:** SAFY — Local AI Database Agent and Database Safety Gateway  
-**Application version:** `1.1.0`  
-**Snapshot date:** `2026-06-24`  
+**Application version:** `1.2.0`  
+**Snapshot date:** `2026-06-25`  
 **Primary audience:** Hermes and any coding/review agent working on SAFY  
 **Required action:** Read this file before planning, editing, testing, or packaging SAFY.
 
@@ -51,7 +51,7 @@ Implemented core capabilities:
 - Local FastAPI backend.
 - Local browser UI with separate login, dashboard, and Schema Graph implementations; Schema Graph now replaces the Dashboard view at a nested Dashboard route instead of opening a popup.
 - Model profile configuration for local and OpenAI-compatible providers.
-- Database profile management with provider/driver routing.
+- Database profile management with a database-type-aware UI, unified payload contract, and provider/driver routing.
 - Agent chat workflow with document-driven skills, shared actions, and compiled domain-intelligence context retrieval.
 - Guarded direct read-only database queries.
 - User-controlled DDL/DML through the Execute Box.
@@ -86,9 +86,9 @@ Not certified yet:
 | Supabase RPC write/DDL | Implemented | Owner-tested for current workflow; OpenAPI schema parsing now captures explicit PK/FK annotations; not CI-certified against every project configuration |
 | PostgreSQL native | Implemented | Driver and policy tests; schema introspection now includes constraints, indexes, inheritance, and partitions; broader live certification pending |
 | SQLite | Implemented | Rollback and restore tests |
-| MySQL | Driver path present | Broader live certification pending |
-| SQL Server | Driver path present | Write workflow not certified |
-| Oracle | Driver path present | Write workflow not certified |
+| MySQL | Structured connection profile + driver path present | Host/port/database/user/password UI and backend classification implemented; broader live certification pending |
+| SQL Server | Structured connection profile + read/write driver path present | Read-only Execute Box uses SQL Server dialect adaptation; sandbox-validated user DDL/DML has a transactional native driver path; live write certification pending |
+| Oracle | Structured connection profile + read driver present | Service Name/SID/schema UI and backend classification implemented; write workflow not certified |
 | Skills | 11 active document-driven packs | `real_skill_execution: false` |
 | Privacy/audit boundary | Implemented | Regression tested |
 | Production readiness | Not certified | Integration-hardening remains |
@@ -279,6 +279,7 @@ The dashboard has:
 - right-side Execute Box and related runtime panels;
 - explicit buttons for Check Safety and Execute;
 - button to replace the current Dashboard view with Schema Graph at `/Dashboard/{schema_ui_name}`; no popup or new window is used;
+- after a saved database profile is switched successfully, the database configuration panel closes, while the independent Model configuration panel keeps the open/closed state it had before the switch;
 - while `/agent/chat` is pending, the thread shows an assistant-side three-dot vertical bounce indicator, the send button is disabled to prevent duplicate requests, and the busy state is always cleared in `finally` after success or failure.
 
 ### 5.3 Sidebar behavior
@@ -496,7 +497,47 @@ disabled
 
 A request payload must never upgrade a saved `read_only` or `disabled` profile to `credential_permissions`.
 
-### 9.2 Provider/driver matrix
+### 9.2 Database connection UI and unified payload contract
+
+The Dashboard database form now starts with `Type Database` and renders only the fields applicable to the selected type. Inline description/help paragraphs under database fields are intentionally omitted to keep the panel compact; labels, placeholders, validation errors, and type-specific visibility remain authoritative. Canonical values:
+
+```text
+postgresql
+supabase_rpc
+mysql
+sqlite
+sqlserver
+oracle
+```
+
+The UI sends one complete JSON shape for all database types. Important fields include:
+
+```text
+database_type, provider, driver, dbms, engine
+connection_kind, execution_transport, base_url
+host, port, instance, database, schema
+sqlite_path, allowed_root, service_name, sid
+authentication, trusted_connection, username
+password, api_key, preserve_secret
+ssl_mode, encrypt, trust_server_certificate, odbc_driver
+sql_rpc_function, timeout_seconds
+user_query_access_mode, read_only, active, real_db_readonly
+```
+
+Backend classification in `DataStore/profile_store.py` treats structured fields and `database_type` as authoritative. URL inference remains only for legacy compatibility. Irrelevant empty fields are ignored by the selected driver.
+
+Database username mapping is intentional: password-authenticated native database profiles use the authenticated SAFY login username. The UI shows that username in a read-only field, and the backend reapplies it during preview, save, test, and runtime materialization so a client payload cannot substitute a different native database username. Exceptions are Supabase API/RPC, SQLite, and SQL Server Windows Authentication, which do not use this mapping.
+
+Type-specific field rules:
+
+- PostgreSQL: host, port, database, SAFY login username (read-only in the form), password, and SSL mode.
+- Supabase API/RPC: HTTPS project Base URL, API key, SQL RPC function.
+- MySQL/MariaDB: host, port, database, SAFY login username (read-only in the form), password, and SSL mode.
+- SQLite: existing local `.db`/`.sqlite` path and optional allowed root; no credentials.
+- SQL Server: host, optional named instance/port, database, SQL Server or Windows Authentication, encryption, trust-certificate flag, and ODBC driver.
+- Oracle: host, port, Service Name or SID, optional schema/owner, SAFY login username (read-only in the form), and password.
+
+### 9.3 Provider/driver matrix
 
 Current routing matrix:
 
@@ -507,7 +548,7 @@ Current routing matrix:
 | `google_cloud_sql` | `mysql`, `postgresql`, `sqlserver` |
 | `aws_aurora` | `mysql`, `postgresql` |
 
-### 9.3 Supabase routing rule
+### 9.4 Supabase routing rule
 
 Two distinct modes must remain separate.
 
@@ -526,7 +567,7 @@ Supabase-hosted native PostgreSQL connection string/host
 
 Do not infer RPC mode from the word “Supabase” alone. Driver routing must use the actual connection kind and URL scheme.
 
-### 9.4 Database secrets
+### 9.5 Database secrets
 
 Rules:
 
@@ -536,7 +577,7 @@ Rules:
 - raw secret fields are rejected at the persistence boundary;
 - audit/session/UI responses must not contain raw database secrets.
 
-### 9.5 Profile endpoints
+### 9.6 Profile endpoints
 
 Primary current endpoints:
 
@@ -563,7 +604,9 @@ Compatibility endpoints remain under `/profiles/database/*`. New work must conve
 - command routing;
 - active database/sandbox context;
 - schema context;
-- model-backed SQL draft generation;
+- semantic action planning before SQL generation;
+- model-backed or deterministic SQL draft generation;
+- intent-to-SQL consistency enforcement;
 - SQL guard;
 - Execute Box draft creation;
 - checked execution;
@@ -605,6 +648,11 @@ Do not rename it back to `text_to_query` unless the user explicitly approves a p
 
 Current skill behavior:
 
+- `text_to_sql` is semantic-plan-first: natural language is converted to a canonical operation/scope/effect plan before SQL generation;
+- semantic routing is model-based and language/synonym aware; keyword classification is retained only for coarse metadata and deterministic workflow shortcuts, not as the primary safety decision;
+- generated SQL is independently classified and compared with the semantic plan; mismatches such as `DROP_TABLES → SELECT` fail closed with no executable SQL;
+- `DROP_TABLES + ALL_TABLES` uses the full stored Schema Graph and a deterministic single-statement renderer for PostgreSQL/Supabase, SQL Server, and MySQL/MariaDB;
+- low-confidence, malformed, unknown, missing-schema, unsupported deterministic batch, and unclassifiable/multi-statement outputs fail closed;
 - skills are discovered from canonical lowercase directories at `Skills/<name>/SKILL.md`;
 - all 11 skill documents pass `python Scripts/validate_skills.py`;
 - `schema_graph` exposes the required `## Required context` and `## Expected output` contract sections plus its JSON output schema;
@@ -799,6 +847,7 @@ GET    /sandboxes/{sandbox_id}/audit
 ### 13.1 PostgreSQL
 
 - native test, schema, read-only, and user SQL paths are present;
+- connection profiles honor UI-selected SSL mode and bounded connection timeout;
 - schema introspection uses PostgreSQL catalogs to collect tables, views, materialized views, partitions, columns, primary/unique constraints, indexes, foreign keys, table inheritance, and partition-parent metadata;
 - foreign-key column pairs are preserved for composite constraints;
 - user write/DDL remains gated by QueryOrchestrator and sandbox;
@@ -823,14 +872,31 @@ GET    /sandboxes/{sandbox_id}/audit
 
 ### 13.4 MySQL
 
-- driver and user execution path are present;
+- structured UI/profile fields and native driver path are present;
+- user execution path is present;
 - broader Docker/live integration certification is pending.
 
-### 13.5 SQL Server and Oracle
+### 13.5 SQL Server
 
-- provider/driver contracts and read-oriented driver paths are present;
-- write/DDL end-to-end workflow is not certified;
-- do not advertise them as fully supported without live evidence.
+- structured profile fields support SQL Server Authentication and Windows Authentication;
+- env-backed SQL Server passwords survive the normalize/test/save pipeline; the secret preparation path is idempotent and legacy profiles affected by the former double-normalization bug can recover their deterministic `.env` reference at runtime;
+- direct chat reads refresh the materialized database profile immediately before execution so Test Connection, schema, Execute Box, and agent read paths use the same current credential;
+- a fixed port is authoritative and produces `tcp:host,port`; a named instance is used only when no fixed port is configured;
+- direct read previews and read-only Execute Box checks use SQL Server `TOP (n)` and convert a trailing `LIMIT n` before computing the safety hash;
+- read query/driver failures are converted into structured SAFY error envelopes instead of escaping as HTTP 500;
+- SQL Server result rows are normalized to JSON-safe values for decimals, temporal values, UUIDs, and binary columns;
+- SQL Server authentication, untrusted-domain, connection-refused, syntax, object-not-found, and permission failures return specific driver error codes without exposing the connection string;
+- encryption, trust-server-certificate, and configurable ODBC Driver 18 selection are represented in the profile;
+- schema/read paths and a transactional `execute_user_sql` path for sandbox-validated user DDL/DML are present;
+- live SQL Server write/DDL and sandbox compatibility certification remain pending.
+
+### 13.6 Oracle
+
+- structured profile fields support Service Name or SID and optional schema/owner;
+- read-oriented driver and schema paths are present;
+- write/DDL end-to-end workflow and Oracle sandbox are not certified.
+
+Do not advertise SQL Server or Oracle as fully supported for guarded writes without live evidence.
 
 ### 13.6 Fake driver
 
@@ -1206,6 +1272,142 @@ This rule must be applied to every SAFY handoff unless the user changes it again
 
 ## 20. Current verification evidence
 
+Current blocker fix pass (`2026-06-25`):
+
+```text
+python -m pytest -q
+16 passed
+
+python -m compileall Agent Core Gateway Sandbox State DataStore Apps/Api/safy_api Tests -q
+PASS
+
+node --check Apps/Web/dashboard.js
+PASS
+
+node --check Apps/Web/schema-graph.js
+PASS
+
+node --check Apps/Web/login.js
+PASS
+
+python Scripts/validate_skills.py
+PASS; skills=11; canonical_text_skill=text_to_sql
+
+python Scripts/package_clean_handoff.py
+PASS; created C:\Users\ASUS\SAFY_clean_handoff.zip
+```
+
+Verified current blocker contracts:
+
+- `AgentWorkflowState.transition_context()` clears opposing connected/sandbox fields, increments context generation, and invalidates stale SQL/check/hash state.
+- Switching database in the dashboard resets Execute Box check/draft state before using the new active profile.
+- Frontend no longer blocks natural-language database intents with a regex-only guard; active database profile context is sent as a backend hint while backend remains the authority.
+- `WorkflowEngine` no longer generates natural-language read SQL before semantic planning.
+- Semantic plan coherence is deterministic and blocks incoherent high-confidence model plans.
+- Intent-to-SQL consistency checks target mismatch for generated SQL.
+- Multi-target `DROP TABLE a, b, c` extraction returns all targets while destructive policy remains blocked.
+- Supabase complex read failures now use a stable capability code indicating read RPC/native PostgreSQL is required.
+- Query execution mismatch errors use stable `QUERY_CHECK_*` codes.
+
+Live validation boundary: no production/live PostgreSQL, Supabase, SQL Server, MySQL, Oracle, or Docker sandbox was used in this pass; live DBMS certification remains blocked by environment and must not be claimed as production PASS.
+
+Semantic action planning and intent-to-SQL consistency validation (`2026-06-25`):
+
+```text
+pytest -q Tests/test_semantic_action_planning.py
+8 passed
+
+pytest -q
+29 passed
+
+python -m py_compile \
+  Core/semantic_action_plan.py \
+  Core/skill_actions.py \
+  Agent/agent_runtime.py \
+  Apps/Api/safy_api/main.py \
+  Tests/test_semantic_action_planning.py
+PASS
+
+python Scripts/validate_skills.py
+PASS
+```
+
+Verified contracts:
+
+- natural-language synonyms are interpreted by a structured semantic planner rather than enumerated deletion keywords;
+- canonical plans carry operation, scope, target/effect, schema requirement, confirmation requirement, confidence, and rationale;
+- a mutating/destructive plan cannot be silently replaced by `SELECT`;
+- read plans cannot emit mutating SQL;
+- unknown or low-confidence plans return no executable SQL;
+- `DROP_TABLES + ALL_TABLES` uses the full Schema Graph and deterministic dialect rendering;
+- PostgreSQL and SQL Server drop-all plans are single statements compatible with the existing fail-closed SQL classifier;
+- `/Execute` returns a draft requiring Check Safety and never auto-runs destructive SQL;
+- `/agent/generate-sql` exposes `action_plan`, `consistency`, and `blocked` for diagnostics.
+
+Database-switch panel-state regression validation (`2026-06-25`):
+
+```text
+pytest -q Tests/test_dashboard_database_switch.py
+1 passed
+
+pytest -q
+21 passed
+
+node --check Apps/Web/dashboard.js
+PASS
+```
+
+Verified UI contract:
+
+- switching to a saved database profile closes the Database configuration panel only after activation and profile refresh succeed;
+- the Model configuration panel preserves its prior open/closed state across the database switch;
+- a failed switch leaves both configuration panels unchanged and renders the normalized error.
+
+SQL Server execute/read HTTP-500 hardening validation (`2026-06-25`):
+
+```text
+pytest -q Tests/test_sqlserver_runtime_regressions.py
+12 passed
+
+pytest -q
+20 passed
+
+python -m py_compile \
+  Agent/agent_runtime.py \
+  Apps/Api/safy_api/main.py \
+  Gateway/query_orchestrator.py \
+  Gateway/db_drivers/base.py \
+  Gateway/db_drivers/factory.py \
+  Gateway/db_drivers/sqlserver_driver.py \
+  Tests/test_sqlserver_runtime_regressions.py
+PASS
+
+node --check Apps/Web/dashboard.js
+PASS
+
+Verified contracts:
+- SELECT ... LIMIT n is adapted to SELECT TOP (n) before safety hashing;
+- the exact adapted SQL is passed to Execute;
+- SQL Server user DDL/DML uses an explicit transaction with commit/rollback;
+- unexpected Execute failures return a structured QUERY_EXECUTION_FAILED envelope;
+- database-native result values are JSON-safe.
+```
+
+This validation confirms the credential materialization, fixed-port target construction, SQL Server dialect adaptation in both direct-read and Execute Box paths, transactional user execution support, and HTTP-500 containment. A live SQL Server write was not executed inside the isolated handoff environment.
+
+Database profile workflow regression after the type-aware connection patch:
+
+```text
+pytest: 16 passed
+Python compileall: PASS
+dashboard.js syntax: PASS
+skill validation: 11/11 PASS
+FastAPI import/routes: PASS
+```
+
+This verifies payload classification and static/runtime contracts; it is not a live connection certification for every DBMS.
+
+
 Validation executed on this Domain Intelligence fix snapshot:
 
 ```text
@@ -1391,7 +1593,7 @@ One repository-local action may still be required before the next commit on Wind
 4. Define write/DDL certification scope for SQL Server and Oracle.
 5. Add network failure injection around ambiguous commit timing.
 6. Add API-level end-to-end tests beyond direct orchestrator tests.
-7. Add browser automation for login, profile save/test, chat, Check Safety, Execute, sidebar, Schema Graph route replacement, column-edge rendering, pan, and cursor-centered zoom.
+7. Add browser automation for login, each Type Database field state, profile save/test, chat, Check Safety, Execute, sidebar, Schema Graph route replacement, column-edge rendering, pan, and cursor-centered zoom.
 
 ### Priority 2 — UI engineering
 
@@ -1581,6 +1783,8 @@ Preserve relative paths and include a concise change/validation report.
 Before any handoff, confirm:
 
 ```text
+[ ] Natural-language database requests use a canonical semantic action plan before SQL generation.
+[ ] Intent-to-SQL mismatch fails closed; mutating/destructive intent can never degrade into SELECT.
 [ ] Agent real-database path remains read-only.
 [ ] User write/DDL requires sandbox pass.
 [ ] Destructive/admin SQL remains blocked.

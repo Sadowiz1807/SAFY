@@ -8,6 +8,16 @@ import re
 from DataStore.schema_graph_store import summarize_schema_graph
 from LLM.provider_health import adapter_for
 from Gateway.sql_normalizer import sanitize_sql_input
+from Core.semantic_action_plan import (
+    CHAT,
+    READ,
+    UNKNOWN_OPERATION,
+    SemanticActionPlan,
+    plan_from_explicit_sql,
+    render_deterministic_sql,
+    semantic_planner_contract,
+    validate_sql_against_plan,
+)
 
 
 @dataclass
@@ -151,7 +161,13 @@ class SchemaGraphSkill:
 
 
 class TextToSqlSkill:
-    """Shared text-to-SQL action used by the document-driven skill pack."""
+    """Semantic-plan-first text-to-SQL action.
+
+    Natural language is first converted into a canonical action plan. SQL is
+    generated only after the plan is valid, then independently classified and
+    checked against the plan. This prevents a model from weakening a write/DDL
+    request into a harmless-looking SELECT.
+    """
 
     def __init__(
         self,
@@ -195,89 +211,164 @@ class TextToSqlSkill:
         if fenced:
             text = fenced.group(1).strip()
         match = re.search(
-            r"\b(SELECT|WITH|SHOW|DESCRIBE|EXPLAIN|CREATE|ALTER|DROP|INSERT|UPDATE|DELETE)\b[\s\S]+",
+            r"\b(SELECT|WITH|SHOW|DESCRIBE|EXPLAIN|CREATE|ALTER|DROP|TRUNCATE|INSERT|UPDATE|DELETE|MERGE|GRANT|REVOKE)\b[\s\S]+",
             text,
             re.I,
         )
         return match.group(0).strip().rstrip("`") if match else ""
 
-    def _parse_model_json(self, content: Any) -> dict[str, Any]:
+    def _extract_explicit_sql(self, content: str) -> str:
+        text = (content or "").strip()
+        fenced = re.fullmatch(r"```(?:sql)?\s*(.*?)```", text, re.I | re.S)
+        if fenced:
+            text = fenced.group(1).strip()
+        if not re.match(
+            r"^(SELECT|WITH|CREATE|ALTER|DROP|TRUNCATE|INSERT|UPDATE|DELETE|MERGE|GRANT|REVOKE)\b",
+            text,
+            re.I,
+        ):
+            return ""
+        return text.rstrip("`").strip()
+
+    def _parse_json_object(self, content: Any) -> dict[str, Any]:
         if isinstance(content, dict):
             return content
         text = self._llm_content_as_text(content).strip()
         if not text:
-            return {
-                "intent": "unknown",
-                "sql": "",
-                "explanation": "Model returned no structured SQL draft.",
-                "target_hint": None,
-                "requires_confirmation": False,
-            }
+            return {}
         try:
             parsed = json.loads(text)
-            if isinstance(parsed, dict):
-                return parsed
+            return parsed if isinstance(parsed, dict) else {}
         except json.JSONDecodeError:
             pass
         match = re.search(r"\{.*\}", text, re.S)
-        if match:
-            try:
-                parsed = json.loads(match.group(0))
-                if isinstance(parsed, dict):
-                    return parsed
-            except json.JSONDecodeError:
-                pass
+        if not match:
+            return {}
+        try:
+            parsed = json.loads(match.group(0))
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+
+    def _parse_model_json(self, content: Any) -> dict[str, Any]:
+        parsed = self._parse_json_object(content)
+        if parsed:
+            return parsed
+        text = self._llm_content_as_text(content).strip()
         sql = self._extract_sql_candidate(text)
         return {
             "intent": "database_task" if sql else "chat",
             "sql": sql,
-            "explanation": text,
+            "explanation": text or "Model returned no structured SQL draft.",
             "target_hint": None,
             "requires_confirmation": False,
         }
 
-    def _fallback_sql(
+    def _profile(self, model_profile_id: str | None) -> dict[str, Any] | None:
+        if self.provider_store is None:
+            return None
+        return (
+            self.provider_store.get(model_profile_id, redacted=False)
+            if model_profile_id
+            else self.provider_store.active(redacted=False)
+        )
+
+    def _plan_semantic_action(
         self,
+        *,
         request: str,
-        schema_graph: dict[str, Any] | None,
-    ) -> str:
-        text = (request or "").strip()
-        lower = text.lower()
-        limit_match = re.search(
-            r"\b(?:limit|top|first|lấy|lay|show)\s+(\d{1,4})\b",
-            lower,
+        profile: dict[str, Any],
+        target_payload: dict[str, Any],
+        context_text: str,
+        schema_context_text: str,
+    ) -> SemanticActionPlan:
+        planner_system = (
+            "You are SAFY Semantic Action Planner. Interpret the meaning of the "
+            "user request before any SQL is generated. Return one JSON object only. "
+            "Choose a canonical operation from the supplied contract. Do not weaken "
+            "a requested write, deletion, reset, purge, schema removal, permission "
+            "change, or destructive action into READ. Different languages, synonyms, "
+            "and indirect phrasing must map to the same semantic operation. If the "
+            "request is ambiguous, unrelated to databases, or confidence is low, use "
+            "UNKNOWN or CHAT. Use scope ALL_TABLES only when every user table is "
+            "targeted; use DATABASE only for the database object itself and SCHEMA "
+            "only for a schema object. Do not return SQL."
         )
-        limit = int(limit_match.group(1)) if limit_match else 10
-        limit = max(1, min(limit, 100))
+        messages = [
+            {"role": "system", "content": planner_system},
+            {
+                "role": "user",
+                "content": (
+                    f"Semantic plan contract:\n{semantic_planner_contract()}\n\n"
+                    f"Active target:\n{json.dumps(target_payload, ensure_ascii=False)}\n\n"
+                    f"Schema summary:\n{schema_context_text or '[not available]'}\n\n"
+                    f"Runtime context:\n{context_text}\n\n"
+                    f"User request:\n{request}\n\n"
+                    "Return the semantic action plan JSON only."
+                ),
+            },
+        ]
+        try:
+            payload = adapter_for(profile).chat(messages, temperature=0.0)
+            raw_content = payload.get("choices", [{}])[0].get("message", {}).get("content", "")
+            parsed = self._parse_json_object(raw_content)
+            return SemanticActionPlan.from_payload(parsed, source="semantic_model")
+        except Exception as exc:
+            return SemanticActionPlan(
+                operation=UNKNOWN_OPERATION,
+                confidence=0.0,
+                rationale="Semantic planner failed safely.",
+                source="semantic_model",
+                warnings=[f"semantic_planner_error:{type(exc).__name__}"],
+            )
 
-        from_match = re.search(
-            r"\bfrom\s+([A-Za-z_][A-Za-z0-9_\.]*)(?:\b|$)",
-            text,
-            re.I,
-        )
-        table = from_match.group(1) if from_match else ""
-
-        if not table and schema_graph and schema_graph.get("status") == "ready":
-            tables = schema_graph.get("tables") or []
-            for candidate in tables:
-                key = str(candidate.get("key") or candidate.get("name") or "")
-                name = str(candidate.get("name") or "")
-                if key and key.lower() in lower:
-                    table = key
-                    break
-                if name and name.lower() in lower:
-                    table = key or name
-                    break
-            if not table and tables and any(
-                token in lower
-                for token in ["show", "list", "rows", "select", "lấy", "liet", "liệt"]
-            ):
-                table = str(tables[0].get("key") or tables[0].get("name") or "")
-
-        if not table:
-            return ""
-        safe_table = re.sub(r"[^A-Za-z0-9_\.]", "", table)
-        return f"SELECT * FROM {safe_table} LIMIT {limit};" if safe_table else ""
+    def _blocked_result(
+        self,
+        *,
+        plan: SemanticActionPlan,
+        profile: dict[str, Any] | None,
+        target_payload: dict[str, Any],
+        schema_context_text: str,
+        skill_context_text: str,
+        explanation: str,
+        consistency: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        consistency_payload = consistency or {
+            "ok": False,
+            "code": "SEMANTIC_PLAN_BLOCKED",
+            "message": explanation,
+            "statement_type": None,
+            "expected_statement_types": [],
+        }
+        model_output = {
+            "intent": plan.operation,
+            "sql": "",
+            "explanation": explanation,
+            "target_hint": target_payload.get("target"),
+            "requires_confirmation": plan.requires_confirmation,
+            "blocked": True,
+        }
+        policy_blocked = bool(plan.is_destructive)
+        return {
+            "generated_sql": "",
+            "answer": explanation,
+            "model_output": model_output,
+            "action_plan": plan.to_dict(),
+            "consistency": consistency_payload,
+            "profile": profile,
+            "target": target_payload,
+            "schema_context_used": bool(schema_context_text),
+            "skill_context_used": bool(skill_context_text),
+            "draft_only": True,
+            "blocked": True,
+            "policy_blocked": policy_blocked,
+            "executable": False,
+            "check_allowed": False if policy_blocked else False,
+            "execute_allowed": False,
+            "reason": "DESTRUCTIVE_SQL_BLOCKED" if policy_blocked else consistency_payload.get("code"),
+            "check_id": None,
+            "sql_hash": None,
+        }
 
     def generate_sql_draft(
         self,
@@ -290,120 +381,276 @@ class TextToSqlSkill:
         skill_context_text: str = "",
     ) -> dict[str, Any]:
         target_payload = target or {}
-        explicit_sql = self._extract_sql_candidate(request)
+        explicit_sql = self._extract_explicit_sql(request)
         if explicit_sql:
-            read_only = bool(
-                re.match(
-                    r"^(SELECT|WITH|SHOW|DESCRIBE|EXPLAIN)\b",
-                    explicit_sql,
-                    re.I,
+            sql = sanitize_sql_input(explicit_sql)
+            plan = plan_from_explicit_sql(sql)
+            consistency = validate_sql_against_plan(sql, plan)
+            if not consistency.get("ok"):
+                return self._blocked_result(
+                    plan=plan,
+                    profile=None,
+                    target_payload=target_payload,
+                    schema_context_text=schema_context_text,
+                    skill_context_text=skill_context_text,
+                    explanation=str(consistency.get("message") or "Explicit SQL could not be classified safely."),
+                    consistency=consistency,
                 )
-            )
+            if plan.is_destructive:
+                return self._blocked_result(
+                    plan=plan,
+                    profile=None,
+                    target_payload=target_payload,
+                    schema_context_text=schema_context_text,
+                    skill_context_text=skill_context_text,
+                    explanation="DROP and TRUNCATE are blocked by SAFY policy and cannot enter Check Safety or Execute.",
+                    consistency={
+                        **consistency,
+                        "ok": False,
+                        "code": "DESTRUCTIVE_SQL_BLOCKED",
+                        "message": "Destructive SQL is non-executable in the ordinary Execute Box workflow.",
+                    },
+                )
             parsed = {
-                "intent": "read_only" if read_only else "write_or_ddl",
-                "sql": explicit_sql,
+                "intent": plan.operation,
+                "sql": sql,
                 "explanation": (
                     "Using the explicit read-only SQL supplied by the user."
-                    if read_only
+                    if plan.is_read
                     else "Using the explicit SQL as a draft. SQL Guard, sandbox, and confirmation rules still apply."
                 ),
                 "target_hint": target_payload.get("target"),
-                "requires_confirmation": not read_only,
+                "requires_confirmation": plan.requires_confirmation,
             }
             return {
-                "generated_sql": explicit_sql,
+                "generated_sql": sql,
                 "answer": parsed["explanation"],
                 "model_output": parsed,
+                "action_plan": plan.to_dict(),
+                "consistency": consistency,
                 "profile": None,
                 "target": target_payload,
                 "schema_context_used": bool(schema_context_text),
                 "skill_context_used": bool(skill_context_text),
                 "draft_only": True,
+                "blocked": False,
             }
 
-        if self.provider_store is None:
-            fallback = self._fallback_sql(request, schema_graph)
-            parsed = {
-                "intent": "database_task" if fallback else "chat",
-                "sql": fallback,
-                "explanation": (
-                    "Generated a conservative SELECT draft from the active schema context."
-                    if fallback
-                    else "No model provider is configured and no safe schema-grounded fallback was available."
-                ),
-                "target_hint": target_payload.get("target"),
-                "requires_confirmation": False,
-                "fallback": bool(fallback),
-            }
-            return {
-                "generated_sql": fallback,
-                "answer": parsed["explanation"],
-                "model_output": parsed,
-                "profile": None,
-                "target": target_payload,
-                "schema_context_used": bool(schema_context_text),
-                "skill_context_used": bool(skill_context_text),
-                "draft_only": True,
-            }
+        profile = self._profile(model_profile_id)
+        if profile is None:
+            plan = SemanticActionPlan(
+                operation=UNKNOWN_OPERATION,
+                confidence=0.0,
+                rationale="No semantic model provider is configured.",
+                source="runtime",
+                warnings=["semantic_model_unavailable"],
+            )
+            return self._blocked_result(
+                plan=plan,
+                profile=None,
+                target_payload=target_payload,
+                schema_context_text=schema_context_text,
+                skill_context_text=skill_context_text,
+                explanation="Không có model semantic planner; SAFY không đoán SQL từ ngôn ngữ tự nhiên.",
+            )
 
-        profile = (
-            self.provider_store.get(model_profile_id, redacted=False)
-            if model_profile_id
-            else self.provider_store.active(redacted=False)
-        )
         context_text = context_pack_text or (
             f"Active database target: {target_payload.get('target')}\n"
             f"Database profile id: {target_payload.get('database_profile_id') or 'none'}\n\n"
             f"Schema context:\n{schema_context_text}"
         )
+        plan = self._plan_semantic_action(
+            request=request,
+            profile=profile,
+            target_payload=target_payload,
+            context_text=context_text,
+            schema_context_text=schema_context_text,
+        )
+
+        if plan.operation == CHAT:
+            return self._blocked_result(
+                plan=plan,
+                profile=profile,
+                target_payload=target_payload,
+                schema_context_text=schema_context_text,
+                skill_context_text=skill_context_text,
+                explanation=plan.rationale or "Yêu cầu không phải tác vụ database.",
+                consistency={
+                    "ok": False,
+                    "code": "SEMANTIC_PLAN_CHAT",
+                    "message": "No SQL is generated for a chat request.",
+                    "statement_type": None,
+                    "expected_statement_types": [],
+                },
+            )
+        if not plan.can_generate_sql:
+            return self._blocked_result(
+                plan=plan,
+                profile=profile,
+                target_payload=target_payload,
+                schema_context_text=schema_context_text,
+                skill_context_text=skill_context_text,
+                explanation=(
+                    "SAFY chưa xác định đủ chắc chắn thao tác database. Yêu cầu chưa được chuyển thành SQL."
+                    if plan.operation == UNKNOWN_OPERATION or plan.confidence < 0.60
+                    else "Semantic action plan không hợp lệ; SAFY đã fail closed."
+                ),
+            )
+
+        if plan.is_destructive:
+            return self._blocked_result(
+                plan=plan,
+                profile=profile,
+                target_payload=target_payload,
+                schema_context_text=schema_context_text,
+                skill_context_text=skill_context_text,
+                explanation="Yêu cầu destructive đã được nhận diện nhưng bị chặn bởi SAFY policy. Không tạo Check Safety hoặc Execute cho DROP/TRUNCATE.",
+                consistency={
+                    "ok": False,
+                    "code": "DESTRUCTIVE_SQL_BLOCKED",
+                    "message": "Destructive semantic plans are non-executable in the ordinary workflow.",
+                    "statement_type": None,
+                    "expected_statement_types": ["DROP", "TRUNCATE"],
+                },
+            )
+
+        deterministic = render_deterministic_sql(plan, schema_graph, target_payload)
+        if deterministic is not None:
+            sql = sanitize_sql_input(deterministic.get("sql"))
+            if not deterministic.get("ok") or not sql:
+                return self._blocked_result(
+                    plan=plan,
+                    profile=profile,
+                    target_payload=target_payload,
+                    schema_context_text=schema_context_text,
+                    skill_context_text=skill_context_text,
+                    explanation=str(deterministic.get("message") or "Deterministic SQL planning failed safely."),
+                    consistency={
+                        "ok": False,
+                        "code": deterministic.get("code") or "DETERMINISTIC_PLAN_FAILED",
+                        "message": deterministic.get("message") or "Deterministic SQL planning failed safely.",
+                        "statement_type": None,
+                        "expected_statement_types": ["DROP"],
+                    },
+                )
+            consistency = validate_sql_against_plan(sql, plan)
+            if not consistency.get("ok"):
+                return self._blocked_result(
+                    plan=plan,
+                    profile=profile,
+                    target_payload=target_payload,
+                    schema_context_text=schema_context_text,
+                    skill_context_text=skill_context_text,
+                    explanation=str(consistency.get("message") or "Deterministic SQL did not match the plan."),
+                    consistency=consistency,
+                )
+            parsed = {
+                "intent": plan.operation,
+                "sql": sql,
+                "explanation": deterministic.get("message"),
+                "target_hint": target_payload.get("target"),
+                "requires_confirmation": True,
+                "deterministic": True,
+            }
+            return {
+                "generated_sql": sql,
+                "answer": str(parsed["explanation"] or ""),
+                "model_output": parsed,
+                "action_plan": plan.to_dict(),
+                "consistency": consistency,
+                "profile": profile,
+                "target": target_payload,
+                "schema_context_used": bool(schema_context_text),
+                "skill_context_used": bool(skill_context_text),
+                "draft_only": True,
+                "blocked": False,
+                "deterministic_plan": deterministic,
+            }
+
+        generator_system = (
+            f"{self._system_prompt()}\n\n"
+            "The semantic action plan below is authoritative. Generate SQL that "
+            "implements exactly that operation and scope. Never replace a write, "
+            "DDL, destructive, permission, or administrative plan with SELECT. "
+            "If exact SQL cannot be generated from the available schema, return an "
+            "empty sql field and explain why. Return JSON only."
+        )
         messages = [
-            {"role": "system", "content": self._system_prompt()},
+            {"role": "system", "content": generator_system},
             {
                 "role": "user",
                 "content": (
                     f"{skill_context_text}\n\n"
                     f"{context_text}\n\n"
+                    f"Canonical semantic action plan:\n{json.dumps(plan.to_dict(), ensure_ascii=False)}\n\n"
                     f"User request:\n{request}\n\n"
                     "Return JSON only with keys: intent, sql, explanation, "
                     "target_hint, requires_confirmation."
                 ),
             },
         ]
-        payload = adapter_for(profile).chat(messages, temperature=0.0)
-        raw_content = payload.get("choices", [{}])[0].get("message", {}).get("content", "")
-        parsed = self._parse_model_json(raw_content)
+        try:
+            payload = adapter_for(profile).chat(messages, temperature=0.0)
+            raw_content = payload.get("choices", [{}])[0].get("message", {}).get("content", "")
+            parsed = self._parse_model_json(raw_content)
+        except Exception as exc:
+            return self._blocked_result(
+                plan=plan,
+                profile=profile,
+                target_payload=target_payload,
+                schema_context_text=schema_context_text,
+                skill_context_text=skill_context_text,
+                explanation=f"SQL generator failed safely: {type(exc).__name__}.",
+            )
+
         sql = sanitize_sql_input(parsed.get("sql"))
-        if sql:
-            parsed["sql"] = sql
-        if not sql:
-            fallback = self._fallback_sql(request, schema_graph)
-            if fallback:
-                sql = fallback
-                parsed = {
-                    **parsed,
-                    "intent": "database_task",
-                    "sql": sql,
-                    "explanation": "Generated a conservative SELECT draft from the active schema context.",
-                    "target_hint": target_payload.get("target"),
-                    "requires_confirmation": False,
-                    "fallback": True,
-                }
+        consistency = validate_sql_against_plan(sql, plan)
+        if not consistency.get("ok"):
+            return self._blocked_result(
+                plan=plan,
+                profile=profile,
+                target_payload=target_payload,
+                schema_context_text=schema_context_text,
+                skill_context_text=skill_context_text,
+                explanation=str(consistency.get("message") or "Generated SQL did not match the semantic action plan."),
+                consistency=consistency,
+            )
+
+        parsed["intent"] = plan.operation
+        parsed["sql"] = sql
+        parsed["requires_confirmation"] = plan.requires_confirmation
         return {
             "generated_sql": sql,
             "answer": str(parsed.get("explanation") or ""),
             "model_output": parsed,
+            "action_plan": plan.to_dict(),
+            "consistency": consistency,
             "profile": profile,
             "target": target_payload,
             "schema_context_used": bool(schema_context_text),
             "skill_context_used": bool(skill_context_text),
             "draft_only": True,
+            "blocked": False,
         }
 
 
 class QueryGuardSkill:
     def __init__(self, query_orchestrator): self.query_orchestrator = query_orchestrator
     def check(self, sql: str, target: dict[str, Any], database_profile: dict[str, Any] | None = None, permission_mode: str = "read_only", execution_path: str = "skill_query_guard") -> dict[str, Any]:
-        return self.query_orchestrator.check(sql=sql, target=target.get("target") or "connected_database", database_profile_id=target.get("database_profile_id"), permission_mode=permission_mode, execution_path=execution_path, sandbox_id=target.get("sandbox_id"), real_db_mode=bool(target.get("target") == "connected_database" and database_profile), database_profile=database_profile)
+        return self.query_orchestrator.check(
+            sql=sql,
+            target=target.get("target") or "connected_database",
+            database_profile_id=target.get("database_profile_id"),
+            permission_mode=permission_mode,
+            execution_path=execution_path,
+            sandbox_id=target.get("sandbox_id"),
+            real_db_mode=bool(target.get("target") == "connected_database" and database_profile),
+            database_profile=database_profile,
+            context_generation=target.get("context_generation"),
+            schema_generation=target.get("schema_generation"),
+            driver=target.get("driver"),
+            dialect=target.get("dialect"),
+        )
 
 
 class ExecuteBoxSkill:
@@ -414,7 +661,20 @@ class ExecuteBoxSkill:
 class ExecuteQuerySkill:
     def __init__(self, query_orchestrator): self.query_orchestrator = query_orchestrator
     def execute_checked(self, check_id: str, sql_hash: str, target: dict[str, Any], user_decision: str | None = None, confirmation_code: str | None = None, row_limit: int = 100) -> tuple[bool, dict[str, Any]]:
-        return self.query_orchestrator.execute(check_id=check_id, sql_hash=sql_hash, target=target.get("target") or "connected_database", user_decision=user_decision, confirmation_code=confirmation_code, database_profile_id=target.get("database_profile_id"), row_limit=row_limit, sandbox_id=target.get("sandbox_id"))
+        return self.query_orchestrator.execute(
+            check_id=check_id,
+            sql_hash=sql_hash,
+            target=target.get("target") or "connected_database",
+            user_decision=user_decision,
+            confirmation_code=confirmation_code,
+            database_profile_id=target.get("database_profile_id"),
+            row_limit=row_limit,
+            sandbox_id=target.get("sandbox_id"),
+            context_generation=target.get("context_generation"),
+            schema_generation=target.get("schema_generation"),
+            driver=target.get("driver"),
+            dialect=target.get("dialect"),
+        )
 
 
 class QueryExplainSkill:

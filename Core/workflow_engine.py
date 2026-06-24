@@ -79,10 +79,9 @@ class WorkflowEngine:
             return self._continue_create_table(text, state)
         if self._matches(lower, self._create_table_patterns):
             return self._continue_create_table(text, state)
-        if self._matches(lower, self._insert_row_patterns):
-            return self._draft_insert_row(text, state)
-        if self._matches(lower, self._read_query_patterns):
-            return self._draft_read_query(text, state)
+        # Natural-language database reads/writes must flow through the semantic
+        # planner and dialect/capability-aware generator. This deterministic
+        # engine only handles explicit workflow commands and slot filling.
         if self._matches(lower, self._check_patterns):
             if state.last_sql:
                 return WorkflowDecision(True, action="check_safety", answer="Running SQL Guard for the latest draft.")

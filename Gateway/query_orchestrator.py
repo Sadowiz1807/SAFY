@@ -14,6 +14,7 @@ from State.runtime_db import RuntimeDB
 from .connected_db_adapter import AdapterError, adapter_for_profile
 from .db_drivers import execute_readonly as driver_execute_readonly
 from .db_drivers import execute_user_sql as driver_execute_user_sql
+from .db_drivers.factory import adapt_readonly_sql as driver_adapt_readonly_sql
 from .db_drivers.errors import DriverError
 from .permission_checker import CREDENTIAL_PERMISSIONS, DISABLED, READ_ONLY, evaluate_permission
 from .real_db_policy import real_db_policy
@@ -60,6 +61,44 @@ class QueryOrchestrator:
         # Real execution is serialized so a one-time check_id cannot be raced
         # by concurrent requests and applied to the database more than once.
         self._execute_lock = threading.Lock()
+
+    @staticmethod
+    def _binding_payload(
+        *,
+        context_generation: int | None = None,
+        schema_generation: str | None = None,
+        driver: str | None = None,
+        dialect: str | None = None,
+        database_profile: dict | None = None,
+    ) -> dict:
+        profile = database_profile or {}
+        resolved_driver = str(driver or profile.get("driver") or profile.get("dbms") or "").strip().lower() or None
+        resolved_dialect = str(dialect or profile.get("dialect") or resolved_driver or "").strip().lower() or None
+        return {
+            "context_generation": context_generation,
+            "schema_generation": str(schema_generation) if schema_generation is not None else None,
+            "driver": resolved_driver,
+            "dialect": resolved_dialect,
+        }
+
+    def invalidate_checks(self, reason: str, database_profile_id: str | None = None) -> dict:
+        """Invalidate outstanding checks after an external context change.
+
+        Checks are retained for deterministic error reporting, but they can no
+        longer be consumed. This prevents an activation/schema refresh in one UI
+        from leaving another client with a still-executable stale check.
+        """
+        count = 0
+        with self._execute_lock:
+            for check in self.checks.values():
+                if check.get("consumed"):
+                    continue
+                if database_profile_id is not None and check.get("database_profile_id") != database_profile_id:
+                    continue
+                check["invalidated"] = True
+                check["invalidation_reason"] = str(reason or "context_changed")
+                count += 1
+        return {"invalidated_checks": count, "reason": str(reason or "context_changed")}
 
     @staticmethod
     def sql_hash(normalized_sql: str) -> str:
@@ -251,8 +290,20 @@ class QueryOrchestrator:
         message: str,
         warnings: list[str] | None = None,
         batch_info: dict | None = None,
+        context_generation: int | None = None,
+        schema_generation: str | None = None,
+        driver: str | None = None,
+        dialect: str | None = None,
+        database_profile: dict | None = None,
     ) -> dict:
         reasons = list(dict.fromkeys((warnings or []) + risk.risk_reasons + [code]))
+        binding = self._binding_payload(
+            context_generation=context_generation,
+            schema_generation=schema_generation,
+            driver=driver,
+            dialect=dialect,
+            database_profile=database_profile,
+        )
         response = {
             "check_id": check_id,
             "sql_hash": sql_hash,
@@ -262,6 +313,7 @@ class QueryOrchestrator:
             "target": target,
             "database_profile_id": database_profile_id,
             "sandbox_id": sandbox_id,
+            **binding,
             "user_query_access_mode": permission_mode,
             "targets": targets.targets,
             "affected_tables": targets.targets,
@@ -318,10 +370,17 @@ class QueryOrchestrator:
                 "error_code": code,
             },
         )
-        self.checks[check_id] = {**response, "target": target, "database_profile_id": database_profile_id, "sandbox_id": sandbox_id, "consumed": False}
+        self.checks[check_id] = {
+            **response,
+            "target": target,
+            "database_profile_id": database_profile_id,
+            "sandbox_id": sandbox_id,
+            "consumed": False,
+            "database_profile": database_profile or {},
+        }
         return response
 
-    def _real_db_check(self, sql: str, target: str, database_profile_id: str | None, permission_mode: str, expose_confirmation_code: bool, database_profile: dict | None) -> dict:
+    def _real_db_check(self, sql: str, target: str, database_profile_id: str | None, permission_mode: str, expose_confirmation_code: bool, database_profile: dict | None, context_generation: int | None = None, schema_generation: str | None = None, driver: str | None = None, dialect: str | None = None) -> dict:
         policy = real_db_policy(sql)
         check_id = f"check_real_{uuid.uuid4().hex}"
         sql_hash = self.sql_hash(policy["normalized_sql"])
@@ -341,6 +400,10 @@ class QueryOrchestrator:
             "statement_type": policy["statement_type"],
             "target": target,
             "database_profile_id": database_profile_id,
+            "context_generation": context_generation,
+            "schema_generation": schema_generation,
+            "driver": driver or (database_profile or {}).get("driver"),
+            "dialect": dialect or (database_profile or {}).get("dialect") or (database_profile or {}).get("driver"),
             "user_query_access_mode": permission_mode,
             "targets": [],
             "affected_tables": [],
@@ -388,13 +451,64 @@ class QueryOrchestrator:
         self.checks[check_id] = {**response, "target": target, "database_profile_id": database_profile_id, "consumed": False, "database_profile": database_profile or {}}
         return response
 
-    def _user_execute_box_check(self, sql: str, target: str, database_profile_id: str | None, permission_mode: str, expose_confirmation_code: bool, database_profile: dict | None, sandbox_id: str | None) -> dict:
+    def _user_execute_box_check(
+        self,
+        sql: str,
+        target: str,
+        database_profile_id: str | None,
+        permission_mode: str,
+        expose_confirmation_code: bool,
+        database_profile: dict | None,
+        sandbox_id: str | None,
+        context_generation: int | None = None,
+        schema_generation: str | None = None,
+        driver: str | None = None,
+        dialect: str | None = None,
+    ) -> dict:
+        # Adapt read-only SQL to the selected database dialect before computing
+        # the safety hash. This keeps Check Safety, the visible normalized SQL,
+        # and the statement executed by the driver identical.
+        dialect_error: DriverError | None = None
+        preliminary = classify_sql(sql)
+        if preliminary.is_read_only and database_profile:
+            try:
+                sql = driver_adapt_readonly_sql(sql, database_profile)
+            except DriverError as exc:
+                dialect_error = exc
+
         classification, targets, risk, batch_info = self._analyze_execute_box_sql(sql)
         normalized_sql = classification.normalized.normalized_sql
         check_id = f"check_user_{uuid.uuid4().hex}"
         sql_hash = self.sql_hash(normalized_sql)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
         sandbox_id = sandbox_id or (f"db_{database_profile_id}" if database_profile_id else "sandbox_default")
+        binding = self._binding_payload(
+            context_generation=context_generation,
+            schema_generation=schema_generation,
+            driver=driver,
+            dialect=dialect,
+            database_profile=database_profile,
+        )
+        if dialect_error is not None:
+            return self._blocked_execute_box_check_response(
+                check_id=check_id,
+                sql_hash=sql_hash,
+                normalized_sql=normalized_sql,
+                classification=classification,
+                targets=targets,
+                risk=risk,
+                target=target,
+                database_profile_id=database_profile_id,
+                sandbox_id=sandbox_id,
+                permission_mode=permission_mode,
+                expires_at=expires_at,
+                code=dialect_error.error_code,
+                message=str(dialect_error),
+                warnings=["database_dialect_adaptation_failed"],
+                batch_info=batch_info,
+                database_profile=database_profile,
+                **binding,
+            )
         if permission_mode == DISABLED:
             return self._blocked_execute_box_check_response(
                 check_id=check_id,
@@ -412,6 +526,8 @@ class QueryOrchestrator:
                 message="This database profile disables user query execution.",
                 warnings=["database_profile_disabled"],
                 batch_info=batch_info,
+                database_profile=database_profile,
+                **binding,
             )
         if permission_mode == READ_ONLY and not classification.is_read_only:
             return self._blocked_execute_box_check_response(
@@ -430,6 +546,8 @@ class QueryOrchestrator:
                 message="This database profile is read-only and cannot execute DDL or DML.",
                 warnings=["read_only_blocks_mutation"],
                 batch_info=batch_info,
+                database_profile=database_profile,
+                **binding,
             )
         if permission_mode not in {READ_ONLY, CREDENTIAL_PERMISSIONS}:
             return self._blocked_execute_box_check_response(
@@ -448,6 +566,8 @@ class QueryOrchestrator:
                 message="The database profile has an unsupported query access mode.",
                 warnings=["unknown_permission_mode"],
                 batch_info=batch_info,
+                database_profile=database_profile,
+                **binding,
             )
 
         if risk.blocked_by_policy or self._is_destructive_or_blocked_statement(classification.statement_type):
@@ -478,6 +598,8 @@ class QueryOrchestrator:
                 code=code,
                 message=message,
                 batch_info=batch_info,
+                database_profile=database_profile,
+                **binding,
             )
 
         if classification.is_read_only:
@@ -490,6 +612,7 @@ class QueryOrchestrator:
                 "target": target,
                 "database_profile_id": database_profile_id,
                 "sandbox_id": sandbox_id,
+                **binding,
                 "user_query_access_mode": permission_mode,
                 "targets": targets.targets,
                 "affected_tables": targets.targets,
@@ -545,7 +668,14 @@ class QueryOrchestrator:
                     "sandbox_executed": False,
                 },
             )
-            self.checks[check_id] = {**response, "target": target, "database_profile_id": database_profile_id, "sandbox_id": sandbox_id, "consumed": False, "database_profile": database_profile or {}}
+            self.checks[check_id] = {
+                **response,
+                "target": target,
+                "database_profile_id": database_profile_id,
+                "sandbox_id": sandbox_id,
+                "consumed": False,
+                "database_profile": database_profile or {},
+            }
             return response
 
         sandbox_payload: dict
@@ -579,6 +709,7 @@ class QueryOrchestrator:
             "target": target,
             "database_profile_id": database_profile_id,
             "sandbox_id": sandbox_id,
+            **binding,
             "user_query_access_mode": permission_mode,
             "targets": targets.targets,
             "affected_tables": targets.targets,
@@ -622,14 +753,33 @@ class QueryOrchestrator:
             "blocked_statement_indexes": (batch_info or {}).get("blocked_statement_indexes") or [],
         }
         self.audit.write_event(event_type="user_execute_box_query_check", action="query_check", check_id=check_id, sql_hash=sql_hash, metadata={"statement_type": classification.statement_type, "decision": decision, "database_profile_id": database_profile_id, "sandbox_id": sandbox_id})
-        self.checks[check_id] = {**response, "target": target, "database_profile_id": database_profile_id, "sandbox_id": sandbox_id, "consumed": False, "database_profile": database_profile or {}}
+        self.checks[check_id] = {
+            **response,
+            "target": target,
+            "database_profile_id": database_profile_id,
+            "sandbox_id": sandbox_id,
+            "consumed": False,
+            "database_profile": database_profile or {},
+        }
         return response
 
-    def check(self, sql: str, target: str, database_profile_id: str | None, permission_mode: str, execution_path: str = "user_query", expose_confirmation_code: bool = False, real_db_mode: bool = False, database_profile: dict | None = None, sandbox_id: str | None = None) -> dict:
+    def check(self, sql: str, target: str, database_profile_id: str | None, permission_mode: str, execution_path: str = "user_query", expose_confirmation_code: bool = False, real_db_mode: bool = False, database_profile: dict | None = None, sandbox_id: str | None = None, context_generation: int | None = None, schema_generation: str | None = None, driver: str | None = None, dialect: str | None = None) -> dict:
         if real_db_mode and target == "connected_database" and execution_path == "execute_box_user":
-            return self._user_execute_box_check(sql, target, database_profile_id, permission_mode, expose_confirmation_code, database_profile, sandbox_id)
+            return self._user_execute_box_check(
+                sql,
+                target,
+                database_profile_id,
+                permission_mode,
+                expose_confirmation_code,
+                database_profile,
+                sandbox_id,
+                context_generation,
+                schema_generation,
+                driver,
+                dialect,
+            )
         if real_db_mode:
-            return self._real_db_check(sql, target, database_profile_id, permission_mode, expose_confirmation_code, database_profile)
+            return self._real_db_check(sql, target, database_profile_id, permission_mode, expose_confirmation_code, database_profile, context_generation, schema_generation, driver, dialect)
         if target == "sandbox" and not sandbox_id:
             sandbox_id = "sandbox_default"
         # Sandbox checks intentionally use metadata/SQL Guard only; no DB/container connection happens here.
@@ -662,6 +812,13 @@ class QueryOrchestrator:
             "target": target,
             "database_profile_id": database_profile_id,
             "sandbox_id": sandbox_id,
+            **self._binding_payload(
+                context_generation=context_generation,
+                schema_generation=schema_generation,
+                driver=driver,
+                dialect=dialect,
+                database_profile=database_profile,
+            ),
             "user_query_access_mode": permission_mode,
             "targets": targets.targets,
             "affected_tables": targets.targets,
@@ -690,10 +847,17 @@ class QueryOrchestrator:
             "sandbox_mode": target == "sandbox",
         }
         self.audit.write_event(event_type="query_check", action="query_check", check_id=check_id, sql_hash=sql_hash, metadata={"statement_type": classification.statement_type, "decision": decision})
-        self.checks[check_id] = {**response, "target": target, "database_profile_id": database_profile_id, "sandbox_id": sandbox_id, "consumed": False}
+        self.checks[check_id] = {
+            **response,
+            "target": target,
+            "database_profile_id": database_profile_id,
+            "sandbox_id": sandbox_id,
+            "consumed": False,
+            "database_profile": database_profile or {},
+        }
         return response
 
-    def execute(self, check_id: str | None, sql_hash: str | None, target: str, user_decision: str | None, confirmation_code: str | None, database_profile_id: str | None = None, row_limit: int = 100, sandbox_id: str | None = None) -> tuple[bool, dict]:
+    def execute(self, check_id: str | None, sql_hash: str | None, target: str, user_decision: str | None, confirmation_code: str | None, database_profile_id: str | None = None, row_limit: int = 100, sandbox_id: str | None = None, context_generation: int | None = None, schema_generation: str | None = None, driver: str | None = None, dialect: str | None = None) -> tuple[bool, dict]:
         with self._execute_lock:
             return self._execute_once(
                 check_id=check_id,
@@ -704,12 +868,22 @@ class QueryOrchestrator:
                 database_profile_id=database_profile_id,
                 row_limit=row_limit,
                 sandbox_id=sandbox_id,
+                context_generation=context_generation,
+                schema_generation=schema_generation,
+                driver=driver,
+                dialect=dialect,
             )
 
-    def _execute_once(self, check_id: str | None, sql_hash: str | None, target: str, user_decision: str | None, confirmation_code: str | None, database_profile_id: str | None = None, row_limit: int = 100, sandbox_id: str | None = None) -> tuple[bool, dict]:
+    def _execute_once(self, check_id: str | None, sql_hash: str | None, target: str, user_decision: str | None, confirmation_code: str | None, database_profile_id: str | None = None, row_limit: int = 100, sandbox_id: str | None = None, context_generation: int | None = None, schema_generation: str | None = None, driver: str | None = None, dialect: str | None = None) -> tuple[bool, dict]:
         if not check_id or check_id not in self.checks:
             return False, {"code": "QUERY_CHECK_REQUIRED", "message": "Run /query/check before /query/execute."}
         check = self.checks[check_id]
+        if check.get("invalidated"):
+            return False, {
+                "code": "QUERY_CHECK_CONTEXT_STALE",
+                "message": "The safety check was invalidated because the database or schema context changed.",
+                "reason": check.get("invalidation_reason"),
+            }
         if check.get("consumed"):
             return False, {"code": "QUERY_CHECK_CONSUMED", "message": "Query check has already been consumed."}
         expires_at = datetime.fromisoformat(check["expires_at"].replace("Z", "+00:00"))
@@ -717,19 +891,46 @@ class QueryOrchestrator:
             check["consumed"] = True
             self.checks.pop(check_id, None)
             return False, {"code": "QUERY_CHECK_EXPIRED", "message": "Run /query/check again before /query/execute."}
-        if check.get("runtime_check") and target != check.get("target"):
-            return False, {"code": "TARGET_MISMATCH", "message": "Target does not match the safety check."}
+        if target != check.get("target"):
+            return False, {"code": "QUERY_CHECK_TARGET_MISMATCH", "message": "Target does not match the safety check."}
         if database_profile_id != check.get("database_profile_id"):
-            return False, {"code": "DATABASE_PROFILE_MISMATCH", "message": "Database profile does not match the safety check."}
+            return False, {"code": "QUERY_CHECK_PROFILE_MISMATCH", "message": "Database profile does not match the safety check."}
+        # Policy-blocked checks are never executable, regardless of stale or
+        # omitted context metadata. Return the primary policy reason first.
+        if check.get("safety_status") == "blocked" or str(check.get("decision", "")).startswith("BLOCK"):
+            return False, {"code": check.get("error_code") or "SQL_POLICY_BLOCKED", "message": check.get("blocked_message") or "SQL policy or permission blocks execution."}
+
+        binding_fields = (
+            ("context_generation", context_generation, "QUERY_CHECK_CONTEXT_STALE", "Session context generation does not match the safety check."),
+            ("schema_generation", schema_generation, "QUERY_CHECK_SCHEMA_STALE", "Schema generation does not match the safety check."),
+            ("driver", driver, "QUERY_CHECK_DRIVER_MISMATCH", "Driver does not match the safety check."),
+            ("dialect", dialect, "QUERY_CHECK_DIALECT_MISMATCH", "Dialect does not match the safety check."),
+        )
+        # Report explicit mismatches before missing-field errors so callers can
+        # diagnose the exact stale dimension while still requiring the complete
+        # binding before an allowed check can be consumed.
+        for field, supplied, code, message in binding_fields:
+            expected = check.get(field)
+            if expected is None or supplied is None:
+                continue
+            if field in {"driver", "dialect"}:
+                matches = str(supplied).strip().lower() == str(expected).strip().lower()
+            else:
+                matches = supplied == expected
+            if not matches:
+                return False, {"code": code, "message": message}
+        for field, supplied, code, message in binding_fields:
+            if check.get(field) is not None and supplied is None:
+                return False, {"code": code, "message": message}
         if check.get("sandbox_mode"):
             if target != "sandbox":
-                return False, {"code": "TARGET_MISMATCH", "message": "Sandbox safety check cannot execute against a real DB target."}
+                return False, {"code": "QUERY_CHECK_TARGET_MISMATCH", "message": "Sandbox safety check cannot execute against a real DB target."}
             if (sandbox_id or "sandbox_default") != check.get("sandbox_id"):
-                return False, {"code": "SANDBOX_MISMATCH", "message": "Sandbox does not match the safety check."}
+                return False, {"code": "QUERY_CHECK_CONTEXT_MISMATCH", "message": "Sandbox does not match the safety check."}
         elif target == "sandbox":
-            return False, {"code": "TARGET_MISMATCH", "message": "Safety check target cannot execute against a different runtime target."}
+            return False, {"code": "QUERY_CHECK_TARGET_MISMATCH", "message": "Safety check target cannot execute against a different runtime target."}
         if sql_hash != check["sql_hash"]:
-            return False, {"code": "SQL_HASH_MISMATCH", "message": "SQL hash does not match the safety check."}
+            return False, {"code": "QUERY_CHECK_SQL_HASH_MISMATCH", "message": "SQL hash does not match the safety check."}
         if user_decision == "no":
             check["consumed"] = True
             self.checks.pop(check_id, None)
@@ -739,8 +940,6 @@ class QueryOrchestrator:
             return False, {"code": "MANUAL_CONFIRMATION_MISSING", "message": "User decision must be yes or no."}
         if check.get("confirmation_required", False) and user_decision != "yes":
             return False, {"code": "MANUAL_CONFIRMATION_MISSING", "message": "High-risk query requires explicit confirmation."}
-        if check.get("safety_status") == "blocked" or str(check.get("decision", "")).startswith("BLOCK"):
-            return False, {"code": check.get("error_code") or "SQL_POLICY_BLOCKED", "message": check.get("blocked_message") or "SQL policy or permission blocks execution."}
         if check.get("user_execute_box_mode"):
             if target != "connected_database":
                 return False, {"code": "TARGET_MISMATCH", "message": "User Execute Box checks can only be applied to the checked connected database target."}

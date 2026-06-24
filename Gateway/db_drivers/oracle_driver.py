@@ -18,9 +18,12 @@ class OracleDriver:
         password = resolve_secret(profile, secret_context)
         host = profile.get("host") or "127.0.0.1"
         port = int(profile.get("port") or 1521)
-        service = profile.get("service_name") or profile.get("database") or "FREEPDB1"
+        service = str(profile.get("service_name") or "").strip()
+        sid = str(profile.get("sid") or "").strip()
+        if not service and not sid:
+            service = str(profile.get("database") or "FREEPDB1").strip()
         try:
-            dsn = oracledb.makedsn(host, port, service_name=service)
+            dsn = oracledb.makedsn(host, port, sid=sid) if sid and not service else oracledb.makedsn(host, port, service_name=service)
             return oracledb.connect(user=profile.get("username") or None, password=password, dsn=dsn)
         except Exception as exc:
             raise DriverError("DB_CONNECTION_FAILED", str(exc)) from exc
@@ -29,7 +32,7 @@ class OracleDriver:
         conn = self._connect(profile, secret_context)
         try:
             cur = conn.cursor(); cur.execute("SELECT 1 FROM dual"); cur.fetchone()
-            return success_envelope(self.driver, profile, {"service_name": profile.get("service_name") or profile.get("database"), "read_only": True, "mode": "thin_first"})
+            return success_envelope(self.driver, profile, {"service_name": profile.get("service_name") or None, "sid": profile.get("sid") or None, "read_only": True, "mode": "thin_first"})
         finally:
             conn.close()
 

@@ -3555,3 +3555,36 @@ html[data-theme="light"] .schema-node-column:hover { background: #EFF6FF; }
     transform: none;
   }
 }
+
+
+/* Database-type-aware connection form */
+.database-config-form .database-type-field.hidden {
+  display: none !important;
+}
+.database-config-form .field-help {
+  margin-top: 5px;
+  color: var(--text-dim, #64748B);
+  font-size: 10px;
+  line-height: 1.45;
+}
+.database-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  color: var(--text-muted, #94A3B8);
+  font-size: 11px;
+  cursor: pointer;
+}
+.database-checkbox-row + .database-checkbox-row {
+  margin-top: 3px;
+}
+.database-checkbox-row input {
+  accent-color: var(--primary, #38BDF8);
+}
+html[data-theme="light"] .database-config-form .field-help {
+  color: #64748B;
+}
+html[data-theme="light"] .database-checkbox-row {
+  color: #475569;
+}

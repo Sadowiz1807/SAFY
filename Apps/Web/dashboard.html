@@ -164,23 +164,117 @@
         </button>
 
         <div class="config-panel hidden" id="database-config-panel" aria-label="Database configuration panel">
-          <form class="config-form" id="database-config-form" autocomplete="off">
+          <form class="config-form database-config-form" id="database-config-form" autocomplete="off">
+            <div class="form-field">
+              <label class="field-label" for="db-type">Type Database</label>
+              <select class="field-input field-select" id="db-type" name="database_type">
+                <option value="postgresql" selected>PostgreSQL</option>
+                <option value="supabase_rpc">Supabase API / RPC</option>
+                <option value="mysql">MySQL / MariaDB</option>
+                <option value="sqlite">SQLite</option>
+                <option value="sqlserver">SQL Server</option>
+                <option value="oracle">Oracle</option>
+              </select>
+            </div>
             <div class="form-field">
               <label class="field-label" for="db-profile-name">Connection Name</label>
               <input class="field-input" id="db-profile-name" name="profile_name" type="text" value="" placeholder="My database" />
             </div>
-            <div class="form-field">
-              <label class="field-label" for="db-base-url">Base URL</label>
-              <input class="field-input mono" id="db-base-url" name="base_url" type="text" value="" placeholder="BaseURL" />
+
+            <div class="form-field database-type-field" data-db-types="supabase_rpc">
+              <label class="field-label" for="db-base-url">Project Base URL</label>
+              <input class="field-input mono" id="db-base-url" name="base_url" type="url" value="" placeholder="https://project-ref.supabase.co" />
+            </div>
+
+            <div class="form-field database-type-field" data-db-types="postgresql mysql sqlserver oracle">
+              <label class="field-label" for="db-host">Host</label>
+              <input class="field-input mono" id="db-host" name="host" type="text" value="localhost" placeholder="localhost" />
+            </div>
+            <div class="form-field database-type-field" data-db-types="postgresql mysql sqlserver oracle">
+              <label class="field-label" for="db-port">Port</label>
+              <input class="field-input mono" id="db-port" name="port" type="number" min="0" max="65535" value="5432" placeholder="5432" />
+            </div>
+            <div class="form-field database-type-field" data-db-types="postgresql mysql sqlserver">
+              <label class="field-label" for="db-database">Database</label>
+              <input class="field-input mono" id="db-database" name="database" type="text" value="" placeholder="database_name" />
+            </div>
+
+            <div class="form-field database-type-field" data-db-types="sqlite">
+              <label class="field-label" for="db-sqlite-path">SQLite File</label>
+              <input class="field-input mono" id="db-sqlite-path" name="sqlite_path" type="text" value="" placeholder="C:\data\database.db" />
+            </div>
+            <div class="form-field database-type-field" data-db-types="sqlite">
+              <label class="field-label" for="db-allowed-root">Allowed Root (optional)</label>
+              <input class="field-input mono" id="db-allowed-root" name="allowed_root" type="text" value="" placeholder="C:\data" />
+            </div>
+
+            <div class="form-field database-type-field" data-db-types="sqlserver">
+              <label class="field-label" for="db-instance">Instance (optional)</label>
+              <input class="field-input mono" id="db-instance" name="instance" type="text" value="" placeholder="SQLEXPRESS" />
+            </div>
+            <div class="form-field database-type-field" data-db-types="sqlserver">
+              <label class="field-label" for="db-authentication">Authentication</label>
+              <select class="field-input field-select" id="db-authentication" name="authentication">
+                <option value="sql_server" selected>SQL Server Authentication</option>
+                <option value="windows">Windows Authentication</option>
+              </select>
+            </div>
+
+            <div class="form-field database-type-field" data-db-types="oracle">
+              <label class="field-label" for="db-service-name">Service Name</label>
+              <input class="field-input mono" id="db-service-name" name="service_name" type="text" value="" placeholder="FREEPDB1" />
+            </div>
+            <div class="form-field database-type-field" data-db-types="oracle">
+              <label class="field-label" for="db-sid">SID (optional alternative)</label>
+              <input class="field-input mono" id="db-sid" name="sid" type="text" value="" placeholder="ORCL" />
+            </div>
+            <div class="form-field database-type-field" data-db-types="oracle">
+              <label class="field-label" for="db-schema">Schema / Owner (optional)</label>
+              <input class="field-input mono" id="db-schema" name="schema" type="text" value="" placeholder="APP_SCHEMA" />
+            </div>
+
+            <div class="form-field database-type-field" data-db-types="postgresql mysql sqlserver oracle" data-auth-types="password">
+              <label class="field-label" for="db-username">Database Username</label>
+              <input class="field-input mono" id="db-username" name="username" type="text" value="" placeholder="Uses SAFY login username" autocomplete="username" readonly aria-readonly="true" />
+            </div>
+            <div class="form-field database-type-field" data-db-types="supabase_rpc postgresql mysql sqlserver oracle" data-auth-types="secret">
+              <label class="field-label" for="db-secret" id="db-secret-label">Password</label>
+              <input class="field-input mono" id="db-secret" name="secret" type="password" value="" placeholder="Password" autocomplete="new-password" />
+            </div>
+
+            <div class="form-field database-type-field" data-db-types="postgresql mysql">
+              <label class="field-label" for="db-ssl-mode">SSL Mode</label>
+              <select class="field-input field-select" id="db-ssl-mode" name="ssl_mode">
+                <option value="preferred" selected>Preferred</option>
+                <option value="required">Required</option>
+                <option value="verify_ca">Verify CA</option>
+                <option value="verify_identity">Verify Identity</option>
+                <option value="disabled">Disabled</option>
+              </select>
+            </div>
+            <div class="form-field database-type-field" data-db-types="sqlserver">
+              <label class="database-checkbox-row" for="db-encrypt">
+                <input id="db-encrypt" name="encrypt" type="checkbox" checked />
+                <span>Encrypt connection</span>
+              </label>
+              <label class="database-checkbox-row" for="db-trust-server-certificate">
+                <input id="db-trust-server-certificate" name="trust_server_certificate" type="checkbox" checked />
+                <span>Trust server certificate (local/test)</span>
+              </label>
+            </div>
+            <div class="form-field database-type-field" data-db-types="sqlserver">
+              <label class="field-label" for="db-odbc-driver">ODBC Driver</label>
+              <input class="field-input mono" id="db-odbc-driver" name="odbc_driver" type="text" value="ODBC Driver 18 for SQL Server" />
+            </div>
+            <div class="form-field database-type-field" data-db-types="supabase_rpc">
+              <label class="field-label" for="db-rpc-function">SQL RPC Function</label>
+              <input class="field-input mono" id="db-rpc-function" name="sql_rpc_function" type="text" value="safy_execute_sql" />
             </div>
             <div class="form-field">
-              <label class="field-label" for="db-api-key">API Key</label>
-              <input class="field-input mono" id="db-api-key" name="api_key" type="password" value="" placeholder="API key or secret reference" autocomplete="new-password" />
+              <label class="field-label" for="db-timeout">Connection Timeout (seconds)</label>
+              <input class="field-input mono" id="db-timeout" name="timeout_seconds" type="number" min="1" max="300" value="15" />
             </div>
-            <div class="form-field">
-              <label class="field-label" for="db-username">Username</label>
-              <input class="field-input mono" id="db-username" name="username" type="text" value="" placeholder="username" />
-            </div>
+
             <div class="form-field database-switch-field">
               <label class="field-label" for="database-switch-select">Switch Database</label>
               <div class="database-switch-row">

@@ -34,7 +34,8 @@ DEFAULT_SYSTEM_PROMPT = """You are Safy, an AI Database Agent.
 Be concise, practical, and safety-first.
 Never execute destructive SQL automatically.
 For write/DDL requests, draft SQL only for review; SQL Guard will block execution in read-only mode.
-Prefer read-only SQL.
+Never replace a requested write, DDL, destructive, permission, or administrative operation with a SELECT.
+Generate SQL only after a canonical semantic action plan exists, and keep SQL consistent with that plan.
 Use SQL Guard before execution.
 If the user intent is unclear, ask a short clarification question instead of blocking.
 Do not expose raw secrets, API keys, DSN strings, or internal stack traces.
@@ -48,6 +49,33 @@ DATABASE_COMMAND_REQUIRES_EXECUTE_REPLY = "Database đã kết nối. Read-only/
 CLARIFY_REPLY = "Bạn muốn Safy hỗ trợ tác vụ database nào? Hãy mô tả ngắn bảng, dữ liệu, hoặc câu hỏi cần kiểm tra."
 WRITE_OPERATION_BLOCKED_REPLY = "Yêu cầu này là thao tác ghi/DDL. SAFY không tự chạy trực tiếp trong chat; hệ thống sẽ tạo SQL draft trong Execute Box để bạn review, chạy Check Safety bằng sandbox, rồi chỉ Execute real database sau khi sandbox pass và bạn bấm Execute."
 LLM_UNSTRUCTURED_REPLY = "Model không trả về SQL có cấu trúc. SAFY đã giữ an toàn và không thực thi gì. Hãy thử yêu cầu cụ thể hơn, ví dụ: /Execute select 5 rows from users."
+
+
+def should_auto_execute(*, auto_execute: bool, plan: Any, target: dict[str, Any] | None, consistency: dict[str, Any] | None, capability: dict[str, Any] | None) -> bool:
+    if not auto_execute or not plan or not getattr(plan, "is_read", False):
+        return False
+    if not consistency or not consistency.get("ok"):
+        return False
+    target = target or {}
+    capability = capability or {}
+    if not target.get("database_profile_id") or target.get("context_stale"):
+        return False
+    if capability.get("supports_native_sql") is False and capability.get("supports_simple_rest_select") is False:
+        return False
+    return True
+
+
+def system_database_grounding_error(profile: dict[str, Any] | None) -> dict[str, Any] | None:
+    profile = profile or {}
+    driver = str(profile.get("driver") or profile.get("dbms") or "").strip().lower()
+    database = str(profile.get("database") or "").strip()
+    if driver in {"sqlserver", "mssql"} and database.lower() in {"master", "model", "msdb", "tempdb"}:
+        return {
+            "code": "SQLSERVER_SYSTEM_DATABASE_GROUNDING_BLOCKED",
+            "message": "Select an application SQL Server database before generating SQL. System databases cannot be used for application grounding.",
+            "details": {"driver": driver, "database": database},
+        }
+    return None
 
 
 @dataclass
@@ -176,6 +204,85 @@ class AgentRuntime:
                 # State persistence must not break the chat path.
                 pass
 
+    def invalidate_all_execution_contexts(self, *, reason: str, clear_context: bool = False) -> dict[str, Any]:
+        """Invalidate drafts/checks in memory and persisted chat sessions.
+
+        Profile activation and schema refresh happen outside an individual chat.
+        Keeping old check material in any session would allow a stale Execute Box
+        to outlive the context it was checked against.
+        """
+        session_ids: set[str] = {key for key in self._memory_states if key != "__default__"}
+        if self.runtime_db and hasattr(self.runtime_db, "list_sessions"):
+            try:
+                session_ids.update(
+                    str(item.get("chat_id"))
+                    for item in self.runtime_db.list_sessions(limit=10000)
+                    if isinstance(item, dict) and item.get("chat_id")
+                )
+            except Exception:
+                pass
+
+        invalidated = 0
+        for session_id in sorted(session_ids):
+            try:
+                state = self._load_state(session_id)
+                state.invalidate_bound_context(clear_context=clear_context)
+                self._save_state(session_id, state)
+                invalidated += 1
+            except Exception:
+                continue
+
+        if "__default__" in self._memory_states:
+            state = AgentWorkflowState.from_dict(self._memory_states.get("__default__"))
+            state.invalidate_bound_context(clear_context=clear_context)
+            self._memory_states["__default__"] = state.to_dict()
+            invalidated += 1
+
+        return {
+            "invalidated_sessions": invalidated,
+            "reason": str(reason or "context_changed"),
+            "context_cleared": bool(clear_context),
+        }
+
+    def _schema_generation_for_context(self, target: str | None, sandbox_id: str | None, database_profile_id: str | None) -> str | None:
+        schema = self._schema_for(target or "", sandbox_id, database_profile_id)
+        if not isinstance(schema, dict):
+            return None
+        graph = schema.get("schema_graph") if isinstance(schema.get("schema_graph"), dict) else schema
+        return str(
+            graph.get("schema_hash")
+            or graph.get("updated_at")
+            or graph.get("generated_at")
+            or ""
+        ) or None
+
+    @staticmethod
+    def _semantic_block_next_step(code: str | None, policy_blocked: bool = False) -> str:
+        normalized = str(code or "").upper()
+        if policy_blocked or normalized in {"DESTRUCTIVE_SQL_BLOCKED", "SEMANTIC_PLAN_POLICY_BLOCKED"}:
+            return "review_policy"
+        if normalized in {"SCHEMA_REQUIRED", "SCHEMA_TARGET_NOT_FOUND", "INTENT_SQL_TARGET_UNRESOLVED"}:
+            return "refresh_schema"
+        if normalized in {"SEMANTIC_PLAN_INCOHERENT", "AMBIGUOUS_INTENT", "SEMANTIC_PLAN_BLOCKED"}:
+            return "clarify_intent"
+        if normalized in {"CAPABILITY_UNSUPPORTED", "SEMANTIC_PLAN_CAPABILITY_UNSUPPORTED"}:
+            return "change_database_capability"
+        if normalized == "SQLSERVER_SYSTEM_DATABASE_GROUNDING_BLOCKED":
+            return "select_application_database"
+        if normalized in {"DIALECT_MISMATCH", "INTENT_SQL_MISMATCH", "INTENT_SQL_TARGET_MISMATCH", "INTENT_SQL_TARGET_SET_MISMATCH", "SQL_GENERATION_FAILED"}:
+            return "regenerate_sql"
+        if normalized in {"CONTEXT_STALE", "QUERY_CHECK_CONTEXT_STALE", "PROFILE_MISMATCH", "QUERY_CHECK_PROFILE_MISMATCH", "TARGET_MISMATCH", "QUERY_CHECK_TARGET_MISMATCH"}:
+            return "run_check_safety_again"
+        if normalized in {"SCHEMA_GENERATION_STALE", "QUERY_CHECK_SCHEMA_STALE"}:
+            return "refresh_schema"
+        if normalized in {"RPC_NOT_CONFIGURED", "SUPABASE_READ_RPC_NOT_CONFIGURED", "SUPABASE_WRITE_RPC_NOT_CONFIGURED"}:
+            return "configure_rpc"
+        if normalized in {"RPC_FAILED", "SUPABASE_READ_RPC_FAILED", "SUPABASE_WRITE_RPC_FAILED"}:
+            return "review_rpc_error"
+        if normalized in {"SANDBOX_NOT_READY", "SANDBOX_SCHEMA_NOT_READY", "SANDBOX_VALIDATION_NOT_READY"}:
+            return "prepare_sandbox"
+        return "review_error"
+
     def _build_context_pack(self, *, session_id: str | None, message: str, state: AgentWorkflowState, target: str | None, sandbox_id: str | None, database_profile_id: str | None) -> ContextPack:
         resolved_ctx = self.database_context_skill.resolve(target, sandbox_id, database_profile_id)
         schema_text = self._schema_context_text(resolved_ctx.target, resolved_ctx.sandbox_id, resolved_ctx.database_profile_id)
@@ -211,11 +318,22 @@ class AgentRuntime:
             )
         if resolved_ctx.database_profile:
             database_name = str(resolved_ctx.database_profile.get("database") or resolved_ctx.database_profile.get("display_name") or "") or None
-        state.remember_context(
+        profile = resolved_ctx.database_profile or {}
+        driver = profile.get("driver") or profile.get("dbms")
+        dialect = profile.get("dialect") or driver
+        schema_generation = self._schema_generation_for_context(
+            resolved_ctx.target,
+            resolved_ctx.sandbox_id,
+            resolved_ctx.database_profile_id,
+        )
+        state.transition_context(
             target=resolved_ctx.target,
             sandbox_id=resolved_ctx.sandbox_id,
             database_profile_id=resolved_ctx.database_profile_id,
             database_name=database_name,
+            driver=str(driver or "") or None,
+            dialect=str(dialect or "") or None,
+            schema_generation=schema_generation,
         )
         return ContextPack(
             session_id=session_id,
@@ -231,10 +349,16 @@ class AgentRuntime:
         )
 
     def _target_from_context_pack(self, context_pack: ContextPack) -> dict[str, Any]:
+        profile = context_pack.database_profile or {}
         return {
             "target": context_pack.target,
             "sandbox_id": context_pack.sandbox_id,
             "database_profile_id": context_pack.database_profile_id,
+            "database_type": profile.get("database_type") or profile.get("driver") or profile.get("dbms"),
+            "context_generation": context_pack.state.context_generation,
+            "schema_generation": context_pack.state.schema_generation,
+            "driver": profile.get("driver") or profile.get("dbms") or context_pack.state.current_driver,
+            "dialect": profile.get("dialect") or profile.get("driver") or profile.get("dbms") or context_pack.state.current_dialect,
         }
 
     def _record_workflow_event(self, session_id: str | None, state: AgentWorkflowState, stage: str, status: str = "ok", metadata: dict[str, Any] | None = None) -> None:
@@ -342,21 +466,107 @@ class AgentRuntime:
             "result_rows_persisted": False,
         }
 
-    def _ensure_direct_read_limit(self, sql: str, limit: int = 100) -> str:
+    def _refresh_checked_database_profile(self, check_id: str | None, database_profile_id: str | None) -> bool:
+        """Reload the materialized profile immediately before driver execution.
+
+        Test Connection, schema loading, Execute Box, and direct chat reads must all
+        resolve the same current env-backed secret. The safety check stays bound to
+        the same profile id; only its runtime credential snapshot is refreshed.
+        """
+        if not check_id or not database_profile_id or not self.database_profile_loader:
+            return False
+        check_record = self.query_orchestrator.checks.get(check_id)
+        if not check_record or check_record.get("database_profile_id") != database_profile_id:
+            return False
+        try:
+            profile = self.database_profile_loader(database_profile_id)
+        except Exception:
+            return False
+        if not profile:
+            return False
+        check_record["database_profile"] = profile
+        check_record["real_db_mode"] = True
+        return True
+
+    def _ensure_direct_read_limit(
+        self,
+        sql: str,
+        limit: int = 100,
+        database_profile: dict[str, Any] | None = None,
+    ) -> str:
+        """Apply a bounded preview using the selected database dialect.
+
+        SQL Server uses TOP, Oracle uses FETCH FIRST, and PostgreSQL/MySQL/SQLite
+        use LIMIT. A model-generated trailing LIMIT is converted for SQL Server
+        and Oracle rather than being passed to the driver as invalid SQL.
+        """
         text = (sql or "").strip()
         if not text:
             return text
-        upper = text.upper()
-        if not upper.startswith("SELECT"):
+        if not re.match(r"^(SELECT|WITH)\b", text, re.I):
             return text
-        if re.search(r"\bLIMIT\s+\d+\b", upper, re.I):
-            return text
-        if text.endswith(";"):
-            return text[:-1].rstrip() + f" LIMIT {limit};"
-        return text.rstrip() + f" LIMIT {limit};"
+
+        requested_limit = max(1, min(int(limit or 100), 1000))
+        had_semicolon = text.endswith(";")
+        body = text[:-1].rstrip() if had_semicolon else text.rstrip()
+        trailing_limit = re.search(r"\s+LIMIT\s+(\d+)\s*$", body, re.I)
+        if trailing_limit:
+            requested_limit = min(requested_limit, max(1, int(trailing_limit.group(1))))
+            body = body[: trailing_limit.start()].rstrip()
+
+        profile = database_profile or {}
+        driver = str(profile.get("driver") or profile.get("dbms") or profile.get("database_type") or "").strip().lower()
+        if driver == "postgres":
+            driver = "postgresql"
+
+        if driver == "sqlserver":
+            # Existing SQL Server pagination/limit syntax remains authoritative.
+            if re.search(r"\bOFFSET\s+\d+\s+ROWS\b", body, re.I) or re.search(
+                r"\bFETCH\s+(?:FIRST|NEXT)\s+\d+\s+ROWS\s+ONLY\b", body, re.I
+            ):
+                return body + (";" if had_semicolon else "")
+
+            select_match = re.match(r"^(\s*SELECT\s+)(DISTINCT\s+)?", body, re.I)
+            if not select_match and re.match(r"^\s*WITH\b", body, re.I):
+                # For a CTE, use the final top-level SELECT in the common
+                # `WITH ... ) SELECT ...` shape.
+                matches = list(re.finditer(r"\)\s*(SELECT\s+)(DISTINCT\s+)?", body, re.I))
+                if matches:
+                    match = matches[-1]
+                    select_start = match.start(1)
+                    select_match = re.match(r"(SELECT\s+)(DISTINCT\s+)?", body[select_start:], re.I)
+                    if select_match:
+                        prefix = body[:select_start]
+                        suffix = body[select_start:]
+                        if re.match(r"^SELECT\s+(?:DISTINCT\s+)?TOP\s*(?:\(|\d)", suffix, re.I):
+                            return body + (";" if had_semicolon else "")
+                        distinct = select_match.group(2) or ""
+                        suffix = select_match.group(1) + distinct + f"TOP ({requested_limit}) " + suffix[select_match.end():]
+                        body = prefix + suffix
+                        return body + ";"
+
+            if select_match:
+                if re.match(r"^\s*SELECT\s+(?:DISTINCT\s+)?TOP\s*(?:\(|\d)", body, re.I):
+                    return body + (";" if had_semicolon else "")
+                distinct = select_match.group(2) or ""
+                body = select_match.group(1) + distinct + f"TOP ({requested_limit}) " + body[select_match.end():]
+            return body + ";"
+
+        if driver == "oracle":
+            if re.search(r"\bFETCH\s+(?:FIRST|NEXT)\s+\d+\s+ROWS\s+ONLY\b", body, re.I):
+                return body + (";" if had_semicolon else "")
+            return body + f" FETCH FIRST {requested_limit} ROWS ONLY;"
+
+        # PostgreSQL, MySQL/MariaDB, SQLite, Supabase/PostgREST SQL RPC, and
+        # unknown SQL-like profiles use LIMIT for bounded direct reads.
+        return body + f" LIMIT {requested_limit};"
 
     def _direct_read_response_from_sql(self, *, sql: str, context_pack: ContextPack, state: AgentWorkflowState) -> dict[str, Any]:
-        sql = self._ensure_direct_read_limit(sql, limit=100)
+        if context_pack.target == "connected_database" and context_pack.database_profile_id:
+            fresh_profile = self._database_profile_for_runtime(context_pack.database_profile_id)
+            if fresh_profile:
+                context_pack.database_profile = fresh_profile
+        sql = self._ensure_direct_read_limit(sql, limit=100, database_profile=context_pack.database_profile)
         target_payload = self._target_from_context_pack(context_pack)
         check = self.query_guard_skill.check(
             sql=sql,
@@ -383,8 +593,10 @@ class AgentRuntime:
                 "agent_state": state.to_dict(),
                 "context_pack": context_pack.to_dict(),
             }
+        check_id = check.get("check_id") or ""
+        self._refresh_checked_database_profile(check_id, context_pack.database_profile_id)
         ok, result = self.execute_query_skill.execute_checked(
-            check_id=check.get("check_id") or "",
+            check_id=check_id,
             sql_hash=check.get("sql_hash") or "",
             target=target_payload,
             user_decision="yes",
@@ -441,6 +653,7 @@ class AgentRuntime:
         sandbox_id: str | None,
         database_profile_id: str | None,
         state: AgentWorkflowState,
+        auto_execute: bool,
     ) -> dict[str, Any] | None:
         """Allow natural-language read-only database questions without requiring /Execute.
 
@@ -449,8 +662,6 @@ class AgentRuntime:
         classified read-only. Otherwise it returns None so the normal safety path can
         handle it.
         """
-        if classify_text_intent(message) != "read_sql":
-            return None
         resolved_ctx = self.database_context_skill.resolve(target, sandbox_id, database_profile_id)
         if resolved_ctx.target == "connected_database" and not resolved_ctx.has_real_database:
             return {"success": True, "answer": DATABASE_MISSING_REPLY, "generated_sql": None, "check": None, "execute": None, "safety": None}
@@ -462,14 +673,109 @@ class AgentRuntime:
             database_profile_id=resolved_ctx.database_profile_id,
             session_id=session_id,
         )
+        action_plan = generated.get("action_plan") or {}
+        consistency = generated.get("consistency") or {}
+        operation = str(action_plan.get("operation") or "UNKNOWN").upper()
         sql = generated.get("generated_sql") or ""
-        if not sql:
+
+        if generated.get("policy_blocked"):
+            code = str(generated.get("reason") or consistency.get("code") or "POLICY_BLOCKED")
+            return {
+                "success": True,
+                "answer": generated.get("answer") or "This operation is blocked by SAFY policy.",
+                "generated_sql": None,
+                "check": None,
+                "execute": {"executed": False, "blocked": True, "executable": False},
+                "execute_box": {
+                    "draft_ready": False,
+                    "sql": "",
+                    "policy_blocked": True,
+                    "executable": False,
+                    "check_allowed": False,
+                },
+                "action_plan": action_plan,
+                "consistency": consistency,
+                "safety": {
+                    "workflow": "policy_blocked",
+                    "next_step": self._semantic_block_next_step(code, policy_blocked=True),
+                    "blocked": True,
+                    "policy_blocked": True,
+                    "executable": False,
+                    "check_allowed": False,
+                    "warnings": [code],
+                    "skills": ["semantic_action_planner", "text_to_sql", "policy"],
+                },
+            }
+        block_code = str(generated.get("reason") or consistency.get("code") or "")
+        if generated.get("blocked") and block_code == "SQLSERVER_SYSTEM_DATABASE_GROUNDING_BLOCKED":
+            return {
+                "success": True,
+                "answer": generated.get("answer") or "Select an application database before generating SQL.",
+                "generated_sql": None,
+                "check": None,
+                "execute": {"executed": False, "blocked": True, "executable": False},
+                "execute_box": {"draft_ready": False, "sql": "", "executable": False, "check_allowed": False},
+                "action_plan": action_plan,
+                "consistency": consistency,
+                "safety": {
+                    "workflow": "database_grounding_blocked",
+                    "next_step": self._semantic_block_next_step(block_code),
+                    "blocked": True,
+                    "executable": False,
+                    "check_allowed": False,
+                    "warnings": [block_code],
+                    "skills": ["database_context", "schema_graph", "policy"],
+                },
+            }
+        if operation in {"CHAT", "UNKNOWN"}:
             return None
+        if operation != "READ":
+            return {
+                "success": True,
+                "answer": WRITE_OPERATION_BLOCKED_REPLY,
+                "generated_sql": None,
+                "check": None,
+                "execute": {"executed": False, "requires_execute_box": True},
+                "action_plan": action_plan,
+                "consistency": consistency,
+                "safety": {
+                    "workflow": "semantic_write_requires_execute",
+                    "blocked": True,
+                    "requires_execute": True,
+                    "skills": ["semantic_action_planner", "text_to_sql"],
+                },
+            }
+        if not sql or not consistency.get("ok"):
+            return {
+                "success": True,
+                "answer": generated.get("answer") or "Semantic read plan did not produce safe matching SQL.",
+                "generated_sql": None,
+                "check": None,
+                "execute": {"executed": False, "blocked": True},
+                "action_plan": action_plan,
+                "consistency": consistency,
+                "safety": {
+                    "workflow": "semantic_plan_blocked",
+                    "next_step": self._semantic_block_next_step(str(generated.get("reason") or consistency.get("code") or "SEMANTIC_PLAN_BLOCKED")),
+                    "blocked": True,
+                    "warnings": [str(generated.get("reason") or consistency.get("code") or "SEMANTIC_PLAN_BLOCKED")],
+                    "skills": ["semantic_action_planner", "text_to_sql", "intent_sql_consistency_guard"],
+                },
+            }
         try:
             from Gateway.sql_classifier import classify_sql
             classification = classify_sql(sql)
             if not classification.is_read_only:
-                return None
+                return {
+                    "success": True,
+                    "answer": "Semantic READ plan produced non-read SQL. SAFY blocked execution.",
+                    "generated_sql": None,
+                    "check": None,
+                    "execute": {"executed": False, "blocked": True},
+                    "action_plan": action_plan,
+                    "consistency": {**consistency, "ok": False, "code": "READ_PLAN_PRODUCED_MUTATION"},
+                    "safety": {"workflow": "intent_sql_mismatch", "blocked": True},
+                }
         except Exception:
             return None
         context_for_read = self._build_context_pack(
@@ -480,6 +786,34 @@ class AgentRuntime:
             sandbox_id=resolved_ctx.sandbox_id,
             database_profile_id=resolved_ctx.database_profile_id,
         )
+        from Core.semantic_action_plan import SemanticActionPlan
+
+        plan_obj = SemanticActionPlan.from_payload(action_plan, source="runtime")
+        profile = context_for_read.database_profile or {}
+        driver = str(profile.get("driver") or profile.get("dbms") or "").lower()
+        capability = {
+            "supports_native_sql": driver not in {"supabase_rpc", "supabase_rest"},
+            "supports_simple_rest_select": driver in {"supabase_rpc", "supabase_rest"},
+        }
+        target_payload = self._target_from_context_pack(context_for_read)
+        if not should_auto_execute(
+            auto_execute=auto_execute,
+            plan=plan_obj,
+            target=target_payload,
+            consistency=consistency,
+            capability=capability,
+        ):
+            return self._draft_response_from_sql(
+                sql=sql,
+                answer="Read-only SQL draft generated. Auto-run read-only is disabled; review it before running Check Safety.",
+                context_pack=context_for_read,
+                state=state,
+                extra_safety={
+                    "workflow": "auto_execute_disabled",
+                    "auto_execute": False,
+                    "next_step": "check_safety",
+                },
+            )
         return self._direct_read_response_from_sql(sql=sql, context_pack=context_for_read, state=state)
 
     def _handle_workflow_decision(self, decision, context_pack: ContextPack, state: AgentWorkflowState) -> dict[str, Any] | None:
@@ -781,6 +1115,50 @@ class AgentRuntime:
         state = self._load_state(session_id)
         context_pack = self._build_context_pack(session_id=session_id, message=message, state=state, target=target, sandbox_id=sandbox_id, database_profile_id=database_profile_id)
         target_payload = self._target_from_context_pack(context_pack)
+        grounding_error = system_database_grounding_error(context_pack.database_profile)
+        if grounding_error:
+            state.invalidate_execution_context()
+            self._save_state(session_id, state)
+            return {
+                "generated_sql": "",
+                "answer": grounding_error["message"],
+                "model_output": {
+                    "intent": "UNKNOWN",
+                    "sql": "",
+                    "explanation": grounding_error["message"],
+                    "target_hint": context_pack.target,
+                    "requires_confirmation": False,
+                    "blocked": True,
+                },
+                "action_plan": {
+                    "operation": "UNKNOWN",
+                    "scope": "UNKNOWN",
+                    "object_type": "UNKNOWN",
+                    "targets": [],
+                    "confidence": 1.0,
+                    "rationale": grounding_error["message"],
+                    "warnings": [grounding_error["code"]],
+                },
+                "consistency": {
+                    "ok": False,
+                    "code": grounding_error["code"],
+                    "message": grounding_error["message"],
+                    "statement_type": None,
+                    "expected_statement_types": [],
+                },
+                "target": target_payload,
+                "schema_graph": {"status": "blocked", "schema_hash": None, "subset_used": False},
+                "context_pack": context_pack.to_dict(),
+                "agent_state": state.to_dict(),
+                "blocked": True,
+                "policy_blocked": False,
+                "executable": False,
+                "check_allowed": False,
+                "execute_allowed": False,
+                "reason": grounding_error["code"],
+                "check_id": None,
+                "sql_hash": None,
+            }
         graph = None
         if context_pack.target == "connected_database" and context_pack.database_profile_id:
             graph = self.schema_graph_skill.load(context_pack.database_profile_id, context_pack.database_profile)
@@ -798,7 +1176,9 @@ class AgentRuntime:
             model_profile_id=model_profile_id,
             target=target_payload,
             schema_context_text=schema_text,
-            schema_graph=subset if isinstance(subset, dict) else graph,
+            # Full graph is retained for deterministic ALL_TABLES planning;
+            # the bounded subset remains the only schema text sent to the model.
+            schema_graph=graph,
             context_pack_text=context_pack.to_prompt_text(),
             skill_context_text=skill_context_text,
         )
@@ -837,15 +1217,18 @@ class AgentRuntime:
         if workflow_response is not None:
             return workflow_response
 
-        direct_read_response = self._maybe_direct_read_chat(
-            message=parsed_command.message or message,
-            session_id=session_id,
-            model_profile_id=model_profile_id,
-            target=target,
-            sandbox_id=sandbox_id,
-            database_profile_id=database_profile_id,
-            state=state,
-        )
+        direct_read_response = None
+        if command_mode != "execute":
+            direct_read_response = self._maybe_direct_read_chat(
+                message=parsed_command.message or message,
+                session_id=session_id,
+                model_profile_id=model_profile_id,
+                target=target,
+                sandbox_id=sandbox_id,
+                database_profile_id=database_profile_id,
+                state=state,
+                auto_execute=auto_execute,
+            )
         if direct_read_response is not None:
             return direct_read_response
 
@@ -875,24 +1258,77 @@ class AgentRuntime:
             )
             sql = generated.get("generated_sql") or ""
             model_output = generated.get("model_output") or {}
-            explanation = model_output.get("explanation") or ("SQL draft generated. Review it before running Check Safety." if sql else LLM_UNSTRUCTURED_REPLY)
-            if sql:
-                try:
-                    from Gateway.sql_classifier import classify_sql
-                    classification = classify_sql(sql)
-                    if classification.is_read_only:
-                        context_for_read = self._build_context_pack(
-                            session_id=session_id,
-                            message=request_text,
-                            state=state,
-                            target=resolved_ctx.target,
-                            sandbox_id=resolved_ctx.sandbox_id,
-                            database_profile_id=resolved_ctx.database_profile_id,
-                        )
-                        return self._direct_read_response_from_sql(sql=sql, context_pack=context_for_read, state=state)
-                except Exception:
-                    # If read-only classification fails, keep the safer draft-only path.
-                    pass
+            action_plan = generated.get("action_plan") or {}
+            consistency = generated.get("consistency") or {}
+            operation = str(action_plan.get("operation") or "UNKNOWN").upper()
+            explanation = model_output.get("explanation") or generated.get("answer") or ("SQL draft generated. Review it before running Check Safety." if sql else LLM_UNSTRUCTURED_REPLY)
+
+            if not sql:
+                block_code = str(generated.get("reason") or consistency.get("code") or "SEMANTIC_PLAN_BLOCKED")
+                policy_blocked = bool(generated.get("policy_blocked"))
+                return {
+                    "success": True,
+                    "answer": explanation,
+                    "generated_sql": None,
+                    "check": None,
+                    "execute": {"executed": False, "blocked": True, "executable": False},
+                    "execute_box": {
+                        "draft_ready": False,
+                        "sql": "",
+                        "summary": explanation,
+                        "policy_blocked": policy_blocked,
+                        "executable": False,
+                        "check_allowed": False,
+                    },
+                    "action_plan": action_plan,
+                    "consistency": consistency,
+                    "safety": {
+                        "workflow": "semantic_plan_blocked",
+                        "next_step": self._semantic_block_next_step(block_code, policy_blocked=policy_blocked),
+                        "target": resolved_ctx.target,
+                        "blocked": True,
+                        "policy_blocked": policy_blocked,
+                        "executable": False,
+                        "check_allowed": False,
+                        "warnings": [block_code],
+                        "skills": ["semantic_action_planner", "schema_graph", "text_to_sql", "intent_sql_consistency_guard"],
+                    },
+                    "schema_graph": generated.get("schema_graph"),
+                    "agent_state": generated.get("agent_state"),
+                    "context_pack": generated.get("context_pack"),
+                }
+
+            try:
+                from Gateway.sql_classifier import classify_sql
+                classification = classify_sql(sql)
+                if classification.is_read_only:
+                    if operation != "READ" or not consistency.get("ok"):
+                        return {
+                            "success": True,
+                            "answer": "SQL read-only không khớp với semantic action plan. SAFY đã chặn thay vì tự đổi ý định người dùng.",
+                            "generated_sql": None,
+                            "check": None,
+                            "execute": {"executed": False, "blocked": True},
+                            "action_plan": action_plan,
+                            "consistency": {**consistency, "ok": False, "code": "MUTATION_PLAN_PRODUCED_READ"},
+                            "safety": {
+                                "workflow": "intent_sql_mismatch",
+                                "blocked": True,
+                                "skills": ["semantic_action_planner", "intent_sql_consistency_guard"],
+                            },
+                        }
+                    context_for_read = self._build_context_pack(
+                        session_id=session_id,
+                        message=request_text,
+                        state=state,
+                        target=resolved_ctx.target,
+                        sandbox_id=resolved_ctx.sandbox_id,
+                        database_profile_id=resolved_ctx.database_profile_id,
+                    )
+                    return self._direct_read_response_from_sql(sql=sql, context_pack=context_for_read, state=state)
+            except Exception:
+                # Any parser/classifier uncertainty remains on the draft-only path.
+                pass
             draft = self.execute_box_skill.set_draft(
                 sql=sql,
                 explanation=explanation,
@@ -927,6 +1363,8 @@ class AgentRuntime:
                 "execute": {"executed": False, "draft_only": True},
                 "execute_box": draft,
                 "query_explain": explain,
+                "action_plan": action_plan,
+                "consistency": consistency,
                 "workflow_plan": plan,
                 "workflow_review": review,
                 "safety": {
@@ -936,7 +1374,7 @@ class AgentRuntime:
                     "provider_profile_id": (generated.get("profile") or {}).get("profile_id"),
                     "blocked": False,
                     "warnings": [] if sql else ["llm_returned_no_sql"],
-                    "skills": ["command_router", "database_context", "schema_graph", "text_to_sql", "execute_box"],
+                    "skills": ["command_router", "database_context", "semantic_action_planner", "schema_graph", "text_to_sql", "intent_sql_consistency_guard", "execute_box"],
                 },
                 "schema_graph": generated.get("schema_graph"),
                 "agent_state": generated.get("agent_state"),
