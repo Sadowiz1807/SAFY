@@ -33,11 +33,21 @@ class DomainRouter:
             features = self.features.get(domain_id, {})
             positives = [str(x).lower() for x in features.get("positive_signals") or []]
             negatives = [str(x).lower() for x in features.get("negative_signals") or []]
-            matched_q = [sig for sig in positives if sig and (sig in q_tokens or sig in (question or "").lower())]
+            question_text = (question or "").lower()
+            matched_q = [sig for sig in positives if sig and (sig in q_tokens or sig in question_text)]
             matched_schema = [sig for sig in positives if sig and sig in s_text]
             neg = [sig for sig in negatives if sig and (sig in q_tokens or sig in s_text)]
             q_score = min(1.0, len(matched_q) / 5.0)
             s_score = min(1.0, len(matched_schema) / 8.0)
+
+            # An exact installed catalog identifier/name is deterministic evidence,
+            # not a business-domain keyword guess. Give it precedence over broad
+            # overlapping terms such as “inventory” that may appear in ecommerce.
+            exact_labels = {str(domain_id or "").lower(), str(domain_id or "").replace("_", " ").lower()}
+            exact_matches = [label for label in exact_labels if label and (label in question_text or label in s_text)]
+            if exact_matches:
+                q_score = max(q_score, 0.8)
+                matched_q = list(dict.fromkeys(matched_q + exact_matches))
             score = max(0.0, (0.62 * q_score + 0.38 * s_score) - (0.08 * len(neg)))
             candidates.append(RouterCandidate(domain_id, round(score, 4), round(q_score, 4), round(s_score, 4), matched_q + matched_schema[:8], neg[:8]))
         candidates.sort(key=lambda c: c.score, reverse=True)

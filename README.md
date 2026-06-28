@@ -9,11 +9,13 @@ SAFY is designed for local development and controlled database operations. It is
 ## Highlights
 
 - Local dashboard at `http://127.0.0.1:8000/`
-- Chat-based database assistant
+- Chat-based database assistant with one active AgentRuntime
 - Read-only data display directly in chat
 - Execute Box for reviewing generated SQL
 - SQL safety classification before execution
-- Sandbox-first validation for write and DDL statements
+- Sandbox-first validation for write, DDL, and generated multi-table schema batches
+- Semantic business-domain classification from compiled DomainIntelligence packs
+- User-controlled `/Execute` workflow for multi-table CREATE TABLE/INDEX drafts
 - Supabase RPC execution path
 - PostgreSQL/MySQL/SQLite-oriented driver layer
 - Model profile management through OpenAI-compatible endpoints
@@ -34,7 +36,7 @@ SAFY separates database operations by risk class.
 | Read-only | `SELECT * FROM users LIMIT 100` | Runs through read-only guard and returns results in chat |
 | Write | `INSERT`, `UPDATE`, `DELETE` | Requires sandbox check before real execution |
 | DDL | `CREATE TABLE`, `ALTER TABLE` | Requires sandbox check before real execution |
-| Destructive | `DROP`, `TRUNCATE`, broad delete/update | Blocked by default or requires stronger confirmation |
+| Destructive/admin | `DROP`, `TRUNCATE`, permission/server administration | Blocked by policy |
 | Secret access | API keys, passwords, tokens | Blocked/redacted |
 
 Core rule:
@@ -42,7 +44,7 @@ Core rule:
 ```text
 Read-only query → direct guarded read
 Write/DDL query → sandbox validation → explicit Execute → real database
-Destructive query → block or strong confirmation workflow
+Destructive/admin query → block by policy
 ```
 
 ---
@@ -150,6 +152,26 @@ Test and activate the profile before using the chat or Execute Box.
 
 ### 4. Use the assistant
 
+Domain-schema preview example:
+
+```text
+Thiết kế hệ thống quản lý kho nhiều chi nhánh
+```
+
+If the business domain is clear, SAFY returns a non-executable preview. If it is ambiguous, SAFY asks you to choose or clarify. SAFY never defaults to e-commerce.
+
+Generate a guarded schema draft:
+
+```text
+/Execute tạo database quản lý kho và logistics
+```
+
+In SAFY, “create database” means a multi-table schema DDL batch. It never issues server-level `CREATE DATABASE`. The DDL appears in Execute Box and follows:
+
+```text
+review SQL → Check Safety in sandbox → explicit Execute on the same profile
+```
+
 Read-only example:
 
 ```text
@@ -246,7 +268,7 @@ Do not commit real Docker `.env` files.
 ## Project Structure
 
 ```text
-Agent/        Agent runtime and schema context
+Agent/        Single active AgentRuntime and schema context
 Apps/Api/     FastAPI backend
 Apps/Web/     Static dashboard UI
 Audit/        Audit schema, store, logger
@@ -256,23 +278,22 @@ Core/         Workflow state, policy, reviewer, registries
 Data/         Example/runtime data boundary
 DataStore/    Profile/env/schema stores
 Docker/       Docker compose files and examples
-Docs/         Canonical documentation
+SOUL.md, SAFY_source.md, and current_state.md    Synchronized technical specifications
 Gateway/      SQL guard, query orchestrator, database adapters
 LLM/          Model profile/provider adapters
 Logging/      Logging helpers
-Providers/    Provider registry and demo/mock providers
 Sandbox/      Sandbox manager, Docker manager, workspace lifecycle
 Scripts/      Local helper scripts and setup utilities
-Skills/       Skill packages and runtimes
+Skills/       Document-driven skill packs with shared AgentRuntime actions
 State/        Runtime/session/workflow state
 Tools/        Tool registry, schemas, SQL/database/sandbox tools
 Toolsets/     Runtime toolset helpers
 ```
 
-Canonical project status document:
+Canonical source-of-truth order:
 
 ```text
-Docs/SAFY_CURRENT_PROJECT_STATUS.md
+SOUL.md → SAFY_source.md → current_state.md → source → tests
 ```
 
 ---
@@ -282,8 +303,10 @@ Docs/SAFY_CURRENT_PROJECT_STATUS.md
 Run static validation:
 
 ```powershell
-python -m compileall -q Agent Core Tools State Apps/Api/safy_api Gateway Skills Audit DataStore LLM Providers Sandbox Toolsets
-node --check Apps/Web/safy-ui.js
+python -m compileall -q Agent Core Tools State Apps/Api/safy_api Gateway Skills Audit DataStore DomainIntelligence LLM Sandbox Toolsets
+node --check Apps/Web/dashboard.js
+node --check Apps/Web/schema-graph.js
+node --check Apps/Web/login.js
 ```
 
 Run install check:
@@ -395,11 +418,11 @@ This is expected. Write/DDL must pass sandbox validation and explicit user execu
 Main documents:
 
 ```text
-Docs/SAFY_CURRENT_PROJECT_STATUS.md
-Docs/DOCUMENTATION_INDEX.md
+SOUL.md → SAFY_source.md → current_state.md
+SOUL.md, SAFY_source.md, and current_state.md
 ```
 
-Patch reports and older architecture notes may exist under `Docs/` and `Docs/Hermes_Execution/`. The current status document is the primary reference for architecture and safety policy.
+`SOUL.md, SAFY_source.md, and current_state.md` is synchronized with the active source. Historical external reports are not runtime authority.
 
 ---
 
@@ -407,9 +430,9 @@ Patch reports and older architecture notes may exist under `Docs/` and `Docs/Her
 
 Next major work:
 
-1. Canonical regression tests.
-2. `Text_to_query` v2 with examples, tests, templates, and deterministic Vietnamese intent handling.
-3. Tool trace/debug UI.
-4. True backend streaming through SSE or WebSocket.
-5. Broader live validation for optional database drivers.
-6. Documentation cleanup and stable release checklist.
+1. Browser-level end-to-end tests for domain clarification, Execute Box, Check Safety and stale-state invalidation.
+2. Broader live validation for Supabase, PostgreSQL, SQL Server, MySQL, Oracle and Docker-backed sandboxes.
+3. Stronger AST-backed SQL target/scope validation across dialects.
+4. Tool trace/debug UI and clearer capability/readiness presentation.
+5. True backend streaming through SSE or WebSocket.
+6. Production-hardening, observability and release certification while preserving the current safety contract.

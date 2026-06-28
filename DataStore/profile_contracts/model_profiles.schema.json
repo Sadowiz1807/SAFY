@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://safy.local/schemas/model-provider-profile.json",
+  "title": "SAFY model-provider profile",
+  "type": "object",
+  "required": [
+    "profile_id",
+    "display_name",
+    "provider_type",
+    "base_url",
+    "model",
+    "auth_mode",
+    "is_active",
+    "capabilities",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "profile_id": {"type": "string", "minLength": 1},
+    "display_name": {"type": "string", "minLength": 1},
+    "provider_type": {"enum": ["openai_compatible", "openai_compat", "lmstudio", "ollama", "ollama_openai", "openai", "openrouter", "custom_router"]},
+    "base_url": {"type": "string", "minLength": 1},
+    "model": {"type": "string", "minLength": 1},
+    "api_key_env": {"type": ["string", "null"], "pattern": "^[A-Z][A-Z0-9_]*$"},
+    "auth_mode": {"enum": ["local_no_auth", "env_api_key"]},
+    "is_active": {"type": "boolean"},
+    "capabilities": {"type": "object"},
+    "context_window": {"type": ["integer", "null"], "minimum": 1},
+    "created_at": {"type": "string", "minLength": 1},
+    "updated_at": {"type": "string", "minLength": 1},
+    "api_key": false,
+    "raw_api_key": false,
+    "password": false,
+    "raw_secret": false,
+    "secret": false,
+    "token": false
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"auth_mode": {"const": "env_api_key"}}, "required": ["auth_mode"]},
+      "then": {"required": ["api_key_env"]}
+    }
+  ],
+  "additionalProperties": false
+}

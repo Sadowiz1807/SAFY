@@ -1,9 +1,9 @@
-schema_version: 2
-source_of_truth: runtime_tool_registry
+schema_version: 3
+source_of_truth: Agent/agent_runtime.py runtime tool registry
 notes: >-
-  SAFY runtime supports read-only database reads, sandbox validation, and
-  sandbox-validated real database execution. These flags mirror runtime policy
-  and must not be interpreted as disabling Gateway/query_orchestrator paths.
+  This file mirrors the active AgentRuntime registry. It documents capability
+  and policy; it does not grant permission independently of SQL Guard,
+  QueryOrchestrator, driver capability, sandbox readiness, or user confirmation.
 real_sandbox_execution: true
 real_database_execution: true
 toolsets:
@@ -24,6 +24,11 @@ toolsets:
     enabled: true
     tools:
       - schema.graph.read
+  domain:
+    enabled: true
+    tools:
+      - domain.context
+      - domain.schema.design
   ui:
     enabled: true
     tools:
@@ -32,7 +37,10 @@ policy:
   read_only_direct:
     enabled: true
     requires_sandbox: false
-  write_and_ddl:
+  domain_schema_preview:
+    enabled: true
+    executable: false
+  write_and_non_destructive_ddl:
     enabled: true
     requires_sandbox: true
     confirmation_boundary: explicit_execute_button_after_sandbox_pass

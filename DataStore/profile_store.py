@@ -54,7 +54,7 @@ def _reject_raw_secrets(profile: dict[str, Any], *, allow_raw_secret: bool = Fal
                 continue
             if not isinstance(value, str) or not value.replace("_", "").isalnum() or not value.upper() == value:
                 raise ProfileStoreError("VALIDATION_ERROR", f"Secret environment variable name is invalid: {key}")
-        elif lower in {"api_key", "password"} or (lower not in {"database", "host", "display_name", "profile_id", "base_url", "endpoint_key", "connection_kind", "execution_transport", "sql_rpc_function", "write_rpc_function", "sql_rpc_argument", "ssl_mode", "user_query_access_mode", "allowed_root"} and _looks_like_secret(value)):
+        elif lower in {"api_key", "password"} or (lower not in {"database", "sqlite_path", "host", "display_name", "profile_id", "base_url", "endpoint_key", "connection_kind", "execution_transport", "sql_rpc_function", "write_rpc_function", "sql_rpc_argument", "ssl_mode", "user_query_access_mode", "allowed_root"} and _looks_like_secret(value)):
             raise ProfileStoreError("SECRET_VALUE_REJECTED", "Raw secret values must not be stored in profiles.")
 
 
@@ -166,7 +166,7 @@ def normalize_database_connection_payload(profile: dict[str, Any]) -> dict[str, 
         normalized["username"] = "supabase_api"
         normalized["ssl_mode"] = "api"
         normalized["sql_rpc_function"] = _nonempty(normalized.get("sql_rpc_function")) or "safy_execute_sql"
-        normalized["sql_rpc_argument"] = _nonempty(normalized.get("sql_rpc_argument")) or "sql_text"
+        normalized["sql_rpc_argument"] = _nonempty(normalized.get("sql_rpc_argument")) or "sql"
         return normalized
 
     normalized.setdefault("connection_kind", "native_sql")

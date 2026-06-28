@@ -7,6 +7,7 @@ import json
 import re
 
 from Gateway.query_orchestrator import QueryOrchestrator
+from Gateway.db_drivers.provider_profiles import resolve_database_capability
 from Core.agent_state import AgentWorkflowState
 from Core.context_pack import ContextPack
 from Core.skill_registry import SkillRegistry
@@ -18,6 +19,14 @@ from LLM.provider_health import adapter_for
 from .schema_context import summarize_schema
 from DataStore.schema_graph_store import summarize_schema_graph
 from DomainIntelligence.context_builder import DomainContextBuilder
+from DomainIntelligence.schema_workflow import (
+    CATALOG_INTENT,
+    SCHEMA_INTENT,
+    DomainSchemaResolution,
+    DomainSchemaWorkflow,
+    DomainSchemaWorkflowError,
+)
+from Core.semantic_action_plan import CREATE_OBJECT, SemanticActionPlan
 from Core.skill_actions import (
     CommandRouterSkill,
     DatabaseContextSkill,
@@ -49,6 +58,38 @@ DATABASE_COMMAND_REQUIRES_EXECUTE_REPLY = "Database đã kết nối. Read-only/
 CLARIFY_REPLY = "Bạn muốn Safy hỗ trợ tác vụ database nào? Hãy mô tả ngắn bảng, dữ liệu, hoặc câu hỏi cần kiểm tra."
 WRITE_OPERATION_BLOCKED_REPLY = "Yêu cầu này là thao tác ghi/DDL. SAFY không tự chạy trực tiếp trong chat; hệ thống sẽ tạo SQL draft trong Execute Box để bạn review, chạy Check Safety bằng sandbox, rồi chỉ Execute real database sau khi sandbox pass và bạn bấm Execute."
 LLM_UNSTRUCTURED_REPLY = "Model không trả về SQL có cấu trúc. SAFY đã giữ an toàn và không thực thi gì. Hãy thử yêu cầu cụ thể hơn, ví dụ: /Execute select 5 rows from users."
+
+
+def _context_file_recall_answer(message: str) -> dict[str, Any] | None:
+    text = str(message or "")
+    lower = text.lower()
+    asks_file_recall = any(term in lower for term in ("còn nhớ file", "nhớ file", "remember file", "attached file", "file prompt"))
+    if not asks_file_recall:
+        return None
+    if "USER PROVIDED CONTEXT FILES" not in text:
+        return {
+            "success": True,
+            "answer": "File prompt.md từng có thể đã được upload, nhưng hiện không active trong session này hoặc chưa được gửi kèm request hiện tại.",
+            "generated_sql": None,
+            "check": None,
+            "execute": None,
+            "safety": {"workflow": "context_file_recall", "context_file_active": False},
+        }
+
+    file_match = re.search(r"File:\s*(.+)", text)
+    file_name = (file_match.group(1).strip() if file_match else "file context")
+    content_match = re.search(r"Content:\s*(.*?)(?:\nEND USER PROVIDED CONTEXT FILE|\Z)", text, re.S)
+    content = (content_match.group(1).strip() if content_match else "")
+    summary = " ".join(content.split())[:700]
+    answer = f"Mình thấy file `{file_name}` đang được gắn trong session này. Nội dung chính là: {summary}"
+    return {
+        "success": True,
+        "answer": answer,
+        "generated_sql": None,
+        "check": None,
+        "execute": None,
+        "safety": {"workflow": "context_file_recall", "context_file_active": True},
+    }
 
 
 def should_auto_execute(*, auto_execute: bool, plan: Any, target: dict[str, Any] | None, consistency: dict[str, Any] | None, capability: dict[str, Any] | None) -> bool:
@@ -102,7 +143,9 @@ class AgentRuntime:
         self.query_repair_skill = QueryRepairSkill()
         self.workflow_engine = WorkflowEngine()
         self.workflow_reviewer = WorkflowReviewCoordinator()
-        self.domain_context_builder = DomainContextBuilder(Path(__file__).resolve().parents[1])
+        project_root = Path(__file__).resolve().parents[1]
+        self.domain_context_builder = DomainContextBuilder(project_root)
+        self.domain_schema_workflow = DomainSchemaWorkflow(project_root, self.provider_store)
         self._memory_states: dict[str, dict[str, Any]] = {}
         self.skill_registry = SkillRegistry()
         self.tool_registry = ToolRegistry()
@@ -129,6 +172,14 @@ class AgentRuntime:
         self.skill_registry.attach_actions(
             "text_to_sql",
             {"generate_sql_draft": self.text_to_sql_skill.generate_sql_draft},
+        )
+        self.skill_registry.attach_actions(
+            "create_database",
+            {
+                "resolve_domain_schema_request": self.domain_schema_workflow.resolve_request,
+                "design_domain_schema": self.domain_schema_workflow.design_schema,
+                "list_domain_catalog": self.domain_schema_workflow.catalog_dicts,
+            },
         )
         self.skill_registry.attach_actions(
             "query_guard",
@@ -164,6 +215,7 @@ class AgentRuntime:
             ("database.execute", "database", "Execute sandbox-validated write/DDL SQL on connected database.", "WRITE_SQL", False, True, True, True),
             ("schema.graph.read", "schema", "Read cached schema graph for context packing.", "READ_ONLY_SQL", True, False, False, False),
             ("domain.context", "domain", "Route domain packs and retrieve bounded business context for prompt packing.", "META", True, False, False, False),
+            ("domain.schema.design", "domain", "Classify a business domain and generate a validated multi-table DDL draft from compiled DomainIntelligence packs.", "WRITE_SQL", False, False, True, True),
             ("execute_box.set_draft", "ui", "Place SQL in Execute Box for user review.", "META", True, False, False, False),
         ]
         for name, toolset, description, risk_class, read_only, writes_database, requires_sandbox, requires_confirmation in tool_specs:
@@ -362,6 +414,9 @@ class AgentRuntime:
         }
 
     def _record_workflow_event(self, session_id: str | None, state: AgentWorkflowState, stage: str, status: str = "ok", metadata: dict[str, Any] | None = None) -> None:
+        event = {"stage": stage, "status": status, "metadata": metadata or {}}
+        state.workflow_history.append(event)
+        state.workflow_history = state.workflow_history[-20:]
         if not session_id or not self.runtime_db or not hasattr(self.runtime_db, "record_workflow_event"):
             return
         try:
@@ -643,6 +698,38 @@ class AgentRuntime:
             "context_pack": context_pack.to_dict(),
         }
 
+
+    def _maybe_schema_summary_answer(self, message: str, context_pack: ContextPack) -> dict[str, Any] | None:
+        lower = str(message or "").lower()
+        asks_table_count = any(term in lower for term in (
+            "bao nhiêu bảng", "bao nhieu bang", "có mấy bảng", "co may bang",
+            "kiểm tra database", "kiem tra database", "liệt kê bảng", "liet ke bang", "show tables"
+        ))
+        if not asks_table_count:
+            return None
+        graph = None
+        try:
+            graph = self.schema_graph_loader(context_pack.database_profile_id) if self.schema_graph_loader and context_pack.database_profile_id else None
+        except Exception:
+            graph = None
+        if not graph or graph.get("status") not in {"ready", "partial"}:
+            return None
+        tables = graph.get("tables") or []
+        table_names = [str(t.get("name") or t.get("key") or "") for t in tables if t]
+        answer = f"Database hiện tại có {len(table_names)} bảng trong Schema Graph."
+        if table_names:
+            answer += " Các bảng gồm: " + ", ".join(table_names[:30]) + ("..." if len(table_names) > 30 else "")
+        return {
+            "success": True,
+            "answer": answer,
+            "generated_sql": None,
+            "check": None,
+            "execute": {"executed": False, "read_only": True},
+            "safety": {"workflow": "schema_graph_summary", "blocked": False, "skills": ["schema_graph"]},
+            "schema_graph": {"table_count": len(table_names), "tables": table_names[:50]},
+            "context_pack": context_pack.to_dict(),
+        }
+
     def _maybe_direct_read_chat(
         self,
         *,
@@ -730,12 +817,34 @@ class AgentRuntime:
         if operation in {"CHAT", "UNKNOWN"}:
             return None
         if operation != "READ":
+            if sql and consistency.get("ok"):
+                context_for_draft = self._build_context_pack(
+                    session_id=session_id,
+                    message=message,
+                    state=state,
+                    target=resolved_ctx.target,
+                    sandbox_id=resolved_ctx.sandbox_id,
+                    database_profile_id=resolved_ctx.database_profile_id,
+                )
+                return self._draft_response_from_sql(
+                    sql=sql,
+                    answer=WRITE_OPERATION_BLOCKED_REPLY,
+                    context_pack=context_for_draft,
+                    state=state,
+                    extra_safety={
+                        "workflow": "natural_write_draft",
+                        "requires_execute": True,
+                        "next_step": "check_safety",
+                        "skills": ["semantic_action_planner", "text_to_sql", "execute_box"],
+                    },
+                )
             return {
                 "success": True,
                 "answer": WRITE_OPERATION_BLOCKED_REPLY,
                 "generated_sql": None,
                 "check": None,
                 "execute": {"executed": False, "requires_execute_box": True},
+                "execute_box": {"draft_ready": False, "sql": "", "executable": False, "check_allowed": False},
                 "action_plan": action_plan,
                 "consistency": consistency,
                 "safety": {
@@ -915,6 +1024,483 @@ class AgentRuntime:
             }
         return None
 
+    def _domain_schema_blocked_response(
+        self,
+        *,
+        code: str,
+        message: str,
+        state: AgentWorkflowState,
+        session_id: str | None,
+        resolution: DomainSchemaResolution | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        state.invalidate_execution_context()
+        self._save_state(session_id, state)
+        return {
+            "success": True,
+            "answer": message,
+            "generated_sql": None,
+            "check": None,
+            "execute": {"executed": False, "blocked": True, "executable": False},
+            "execute_box": {
+                "draft_ready": False,
+                "sql": "",
+                "summary": message,
+                "policy_blocked": False,
+                "executable": False,
+                "check_allowed": False,
+            },
+            "domain_schema": {
+                "status": "blocked",
+                "resolution": resolution.to_dict() if resolution else None,
+                "details": details or {},
+            },
+            "safety": {
+                "workflow": "domain_schema_blocked",
+                "blocked": True,
+                "executable": False,
+                "check_allowed": False,
+                "next_step": self._semantic_block_next_step(code),
+                "warnings": [code],
+                "skills": ["create_database", "domain_intelligence"],
+            },
+            "agent_state": state.to_dict(),
+        }
+
+    def _domain_schema_failed_response(
+        self,
+        *,
+        code: str,
+        message: str,
+        state: AgentWorkflowState,
+        session_id: str | None,
+        resolution: DomainSchemaResolution | None = None,
+        details: dict[str, Any] | None = None,
+        retryable: bool = True,
+    ) -> dict[str, Any]:
+        state.invalidate_execution_context()
+        state.last_user_intent = SCHEMA_INTENT
+        state.last_intent = SCHEMA_INTENT
+        state.last_error = {"code": code, "message": "Domain schema generation failed safely."}
+        state.last_task_summary = "Domain schema generation failed before producing executable SQL."
+        self._record_workflow_event(
+            session_id,
+            state,
+            "domain_schema_generation_failed",
+            status="failed",
+            metadata={"code": code, "retryable": retryable, "details": details or {}},
+        )
+        self._save_state(session_id, state)
+        return {
+            "success": False,
+            "answer": "SAFY không tạo được schema an toàn ở bước thiết kế. SQL cũ đã bị vô hiệu hóa; bạn có thể thử lại hoặc đổi model profile.",
+            "generated_sql": None,
+            "check": None,
+            "execute": {"executed": False, "blocked": False, "executable": False},
+            "execute_box": {
+                "draft_ready": False,
+                "sql": "",
+                "summary": "Schema generation failed safely.",
+                "policy_blocked": False,
+                "executable": False,
+                "check_allowed": False,
+            },
+            "domain_schema": {
+                "status": "failed",
+                "resolution": resolution.to_dict() if resolution else None,
+                "details": details or {},
+            },
+            "safety": {
+                "workflow": "domain_schema_failed",
+                "blocked": False,
+                "executable": False,
+                "check_allowed": False,
+                "next_step": "retry_schema_design",
+                "warnings": [code],
+                "skills": ["create_database", "domain_intelligence"],
+            },
+            "error": {
+                "code": code,
+                "stage": "schema_design",
+                "retryable": retryable,
+                "message": "Domain schema generation failed safely.",
+                "details": details or {},
+            },
+            "agent_state": state.to_dict(),
+        }
+
+    def _domain_schema_clarification_response(
+        self,
+        *,
+        resolution: DomainSchemaResolution,
+        request_text: str,
+        command_mode: str,
+        model_profile_id: str | None,
+        state: AgentWorkflowState,
+        session_id: str | None,
+    ) -> dict[str, Any]:
+        state.invalidate_execution_context()
+        state.set_pending(
+            skill="create_database",
+            action="select_domain",
+            required_slots=["domain_id"],
+            filled_slots={
+                "original_request": request_text,
+                "origin_command_mode": command_mode,
+                "candidates": list(resolution.candidates or []),
+                "model_profile_id": model_profile_id,
+            },
+        )
+        self._record_workflow_event(
+            session_id,
+            state,
+            "domain_schema_clarification",
+            status="waiting",
+            metadata={"candidates": resolution.candidates, "confidence": resolution.confidence},
+        )
+        self._save_state(session_id, state)
+        answer = self.domain_schema_workflow.clarification_question(resolution.candidates)
+        return {
+            "success": True,
+            "answer": answer,
+            "generated_sql": None,
+            "check": None,
+            "execute": None,
+            "execute_box": {
+                "draft_ready": False,
+                "sql": "",
+                "summary": answer,
+                "executable": False,
+                "check_allowed": False,
+            },
+            "domain_schema": {"status": "clarification_required", "resolution": resolution.to_dict()},
+            "safety": {
+                "workflow": "domain_schema_clarification",
+                "blocked": False,
+                "requires_clarification": True,
+                "next_step": "select_domain",
+                "skills": ["create_database", "domain_intelligence"],
+            },
+            "agent_state": state.to_dict(),
+        }
+
+    def _domain_schema_preview_response(
+        self,
+        *,
+        resolution: DomainSchemaResolution,
+        request_text: str,
+        state: AgentWorkflowState,
+        session_id: str | None,
+    ) -> dict[str, Any]:
+        preview = self.domain_schema_workflow.preview(resolution.domain_id or "")
+        state.invalidate_execution_context()
+        state.clear_pending()
+        state.last_user_intent = SCHEMA_INTENT
+        state.last_intent = SCHEMA_INTENT
+        self._save_state(session_id, state)
+        entities = ", ".join(preview.get("entities") or []) or "the compiled domain entities"
+        answer = (
+            f"SAFY nhận diện yêu cầu thiết kế schema thuộc domain {preview['domain_name']} "
+            f"(`{preview['domain_id']}`). Các thực thể tiêu biểu: {entities}. "
+            "Đây là bước xem trước; SAFY chưa tạo hoặc thực thi SQL. "
+            "Dùng `/Execute` với yêu cầu này để tạo DDL nhiều bảng trong Execute Box. "
+            "Sau đó bạn review, chạy Check Safety trong sandbox và chỉ khi sandbox pass mới có thể Execute lên database đã kết nối."
+        )
+        return {
+            "success": True,
+            "answer": answer,
+            "generated_sql": None,
+            "check": None,
+            "execute": None,
+            "execute_box": {
+                "draft_ready": False,
+                "sql": "",
+                "summary": answer,
+                "executable": False,
+                "check_allowed": False,
+            },
+            "domain_schema": {
+                "status": "preview",
+                "request": request_text,
+                "resolution": resolution.to_dict(),
+                "preview": preview,
+            },
+            "safety": {
+                "workflow": "domain_schema_preview",
+                "blocked": False,
+                "auto_executed": False,
+                "next_step": "use_execute_command",
+                "skills": ["create_database", "domain_intelligence"],
+            },
+            "agent_state": state.to_dict(),
+        }
+
+    def _domain_schema_draft_response(
+        self,
+        *,
+        resolution: DomainSchemaResolution,
+        request_text: str,
+        model_profile_id: str | None,
+        target: str | None,
+        sandbox_id: str | None,
+        database_profile_id: str | None,
+        state: AgentWorkflowState,
+        session_id: str | None,
+    ) -> dict[str, Any]:
+        resolved_ctx = self.database_context_skill.resolve(target, sandbox_id, database_profile_id)
+        if resolved_ctx.target != "connected_database" or not resolved_ctx.has_real_database or not resolved_ctx.database_profile_id:
+            return self._domain_schema_blocked_response(
+                code="DATABASE_PROFILE_REQUIRED_FOR_SCHEMA_DESIGN",
+                message="Hãy Save, Test và activate một database profile thật trước khi tạo DDL. SAFY cần DBMS/dialect đích để sinh schema đúng cú pháp; hệ thống sẽ không tự chạy CREATE DATABASE cấp server.",
+                state=state,
+                session_id=session_id,
+                resolution=resolution,
+            )
+        grounding_error = system_database_grounding_error(resolved_ctx.database_profile)
+        if grounding_error:
+            return self._domain_schema_blocked_response(
+                code=grounding_error["code"],
+                message=grounding_error["message"],
+                state=state,
+                session_id=session_id,
+                resolution=resolution,
+                details=grounding_error.get("details"),
+            )
+
+        profile = resolved_ctx.database_profile or {}
+        capability = resolve_database_capability(profile)
+        dialect = str(profile.get("dialect") or capability.dialect).strip()
+        schema_generation = self._schema_generation_for_context(
+            resolved_ctx.target,
+            resolved_ctx.sandbox_id,
+            resolved_ctx.database_profile_id,
+        )
+        try:
+            state.transition_context(
+                target="connected_database",
+                database_profile_id=resolved_ctx.database_profile_id,
+                database_name=profile.get("database"),
+                driver=capability.driver,
+                dialect=dialect,
+                schema_generation=schema_generation,
+            )
+            design = self.domain_schema_workflow.design_schema(
+                request=request_text,
+                domain_id=resolution.domain_id or "",
+                dialect=dialect,
+                model_profile_id=model_profile_id,
+            )
+        except DomainSchemaWorkflowError as exc:
+            runtime_failure = exc.code in {
+                "DOMAIN_SCHEMA_MODEL_FAILED",
+                "MODEL_TIMEOUT",
+                "MODEL_PROFILE_REQUIRED",
+                "MODEL_JSON_INVALID",
+                "DOMAIN_SCHEMA_DDL_INVALID",
+                "DOMAIN_SCHEMA_DDL_EMPTY",
+                "DOMAIN_SCHEMA_DOMAIN_MISMATCH",
+                "DOMAIN_SCHEMA_DIALECT_MISMATCH",
+            }
+            if runtime_failure:
+                return self._domain_schema_failed_response(
+                    code="DOMAIN_SCHEMA_GENERATION_FAILED" if exc.code != "MODEL_TIMEOUT" else "MODEL_TIMEOUT",
+                    message=str(exc),
+                    state=state,
+                    session_id=session_id,
+                    resolution=resolution,
+                    details={"source_code": exc.code, **(exc.details or {})},
+                    retryable=exc.code not in {"MODEL_PROFILE_REQUIRED"},
+                )
+            return self._domain_schema_blocked_response(
+                code=exc.code,
+                message=str(exc),
+                state=state,
+                session_id=session_id,
+                resolution=resolution,
+                details=exc.details,
+            )
+
+        context_pack = self._build_context_pack(
+            session_id=session_id,
+            message=request_text,
+            state=state,
+            target="connected_database",
+            sandbox_id=None,
+            database_profile_id=resolved_ctx.database_profile_id,
+        )
+        target_payload = self._target_from_context_pack(context_pack)
+        explanation = (
+            f"Đã tạo DDL nhiều bảng cho domain {design.domain_name} ({design.dialect}). "
+            f"Batch gồm {len(design.statements)} câu lệnh và {len(design.table_names)} target. "
+            "SAFY chưa thực thi. Hãy review SQL, chạy Check Safety; Check Safety sẽ kiểm tra batch trong sandbox và chỉ khi pass bạn mới có thể bấm Execute lên database thật."
+        )
+        draft = self.execute_box_skill.set_draft(
+            sql=design.sql,
+            explanation=explanation,
+            target=target_payload,
+            provider_profile_id=design.model_profile_id,
+        )
+        draft.update(
+            {
+                "statement_count": len(design.statements),
+                "domain_id": design.domain_id,
+                "domain_name": design.domain_name,
+                "dialect": design.dialect,
+                "executable": True,
+                "check_allowed": True,
+                "sandbox_required": True,
+                "server_level_create_database": False,
+            }
+        )
+        semantic_plan = SemanticActionPlan(
+            operation=CREATE_OBJECT,
+            scope="MULTIPLE_OBJECTS",
+            object_type="TABLE",
+            targets=list(design.table_names),
+            data_effect="NONE",
+            schema_effect="SCHEMA_WRITE",
+            requires_schema=False,
+            requires_confirmation=True,
+            confidence=1.0,
+            rationale=f"Validated multi-table DDL from compiled DomainIntelligence pack {design.domain_id}.",
+            source="domain_schema_workflow",
+            warnings=list(design.warnings),
+        )
+        consistency = {
+            "ok": True,
+            "code": "DOMAIN_SCHEMA_BATCH_VALIDATED",
+            "message": "Every generated statement was restricted to CREATE TABLE or CREATE INDEX and has an extractable target.",
+            "statement_count": len(design.statements),
+            "targets": list(design.table_names),
+        }
+        plan, review = self._plan_review_payload(sql=design.sql, context_pack=context_pack, state=state)
+        state.clear_pending()
+        state.remember_sql(design.sql, intent=SCHEMA_INTENT, safety_class=plan.get("action_class"))
+        self._record_tool_call(
+            session_id,
+            state,
+            "domain.schema.design",
+            status="ok",
+            risk_class=plan.get("action_class"),
+            metadata={
+                "domain_id": design.domain_id,
+                "dialect": design.dialect,
+                "statement_count": len(design.statements),
+                "table_count": len(design.table_names),
+            },
+        )
+        self._save_state(session_id, state)
+        return {
+            "success": True,
+            "answer": explanation,
+            "generated_sql": design.sql,
+            "check": None,
+            "execute": {"executed": False, "draft_only": True, "sandbox_required": True, "executable": False},
+            "execute_box": draft,
+            "action_plan": semantic_plan.to_dict(),
+            "consistency": consistency,
+            "workflow_plan": plan,
+            "workflow_review": review,
+            "domain_schema": {"status": "drafted", "resolution": resolution.to_dict(), "design": design.to_dict()},
+            "safety": {
+                "workflow": "domain_schema_draft",
+                "next_step": "check_safety",
+                "target": "connected_database",
+                "blocked": False,
+                "auto_executed": False,
+                "sandbox_required": True,
+                "server_level_create_database": False,
+                "warnings": list(design.warnings),
+                "skills": ["create_database", "domain_intelligence", "execute_box", "query_guard"],
+            },
+            "agent_state": state.to_dict(),
+            "context_pack": context_pack.to_dict(),
+        }
+
+    def _handle_domain_schema_request(
+        self,
+        *,
+        message: str,
+        command_mode: str,
+        session_id: str | None,
+        model_profile_id: str | None,
+        target: str | None,
+        sandbox_id: str | None,
+        database_profile_id: str | None,
+        state: AgentWorkflowState,
+    ) -> dict[str, Any] | None:
+        pending = state.pending_skill == "create_database" and state.pending_action == "select_domain"
+        slots = dict(state.filled_slots or {}) if pending else {}
+        request_text = str(slots.get("original_request") or message).strip()
+        effective_mode = str(slots.get("origin_command_mode") or command_mode or "chat").strip().lower()
+        effective_model_profile_id = model_profile_id or slots.get("model_profile_id")
+        candidates = slots.get("candidates") if isinstance(slots.get("candidates"), list) else None
+
+        resolution = self.domain_schema_workflow.resolve_request(
+            message,
+            model_profile_id=effective_model_profile_id,
+            pending_candidates=candidates,
+            original_request=request_text if pending else None,
+        )
+        if not resolution.relevant:
+            return None
+        if resolution.intent == CATALOG_INTENT:
+            state.invalidate_execution_context()
+            state.clear_pending()
+            self._save_state(session_id, state)
+            catalog_answer = self.domain_schema_workflow.catalog_answer()
+            return {
+                "success": True,
+                "answer": catalog_answer,
+                "generated_sql": None,
+                "check": None,
+                "execute": None,
+                "execute_box": {
+                    "draft_ready": False,
+                    "sql": "",
+                    "summary": catalog_answer,
+                    "executable": False,
+                    "check_allowed": False,
+                },
+                "domain_schema": {"status": "catalog", "catalog": self.domain_schema_workflow.catalog_dicts()},
+                "safety": {"workflow": "domain_schema_catalog", "blocked": False, "skills": ["create_database", "domain_intelligence"]},
+                "agent_state": state.to_dict(),
+            }
+        if resolution.decision == "blocked":
+            return self._domain_schema_blocked_response(
+                code="DOMAIN_SCHEMA_WORKFLOW_UNAVAILABLE",
+                message=resolution.rationale or "Domain schema workflow is unavailable.",
+                state=state,
+                session_id=session_id,
+                resolution=resolution,
+            )
+        if resolution.decision != "selected" or not resolution.domain_id:
+            return self._domain_schema_clarification_response(
+                resolution=resolution,
+                request_text=request_text,
+                command_mode=effective_mode,
+                model_profile_id=effective_model_profile_id,
+                state=state,
+                session_id=session_id,
+            )
+        if effective_mode != "execute":
+            return self._domain_schema_preview_response(
+                resolution=resolution,
+                request_text=request_text,
+                state=state,
+                session_id=session_id,
+            )
+        return self._domain_schema_draft_response(
+            resolution=resolution,
+            request_text=request_text,
+            model_profile_id=effective_model_profile_id,
+            target=target,
+            sandbox_id=sandbox_id,
+            database_profile_id=database_profile_id,
+            state=state,
+            session_id=session_id,
+        )
+
     def record_check_result(self, session_id: str | None, check: dict[str, Any], sql: str | None = None) -> None:
         if not session_id:
             return
@@ -944,6 +1530,10 @@ class AgentRuntime:
     def _is_greeting(self, message: str) -> bool:
         text = (message or '').strip().lower()
         return text in {'hi', 'hello', 'hey', 'chào', 'chào bạn', 'xin chào'}
+
+    def _is_identity_question(self, message: str) -> bool:
+        text = (message or '').strip().lower()
+        return text in {'bạn là ai', 'ban la ai', 'safy là ai', 'safy la ai', 'who are you', 'what are you'}
 
     def _looks_like_database_task(self, message: str) -> bool:
         text = (message or '').strip().lower()
@@ -1201,9 +1791,40 @@ class AgentRuntime:
 
         if self._is_greeting(message):
             return {"success": True, "answer": GREETING_REPLY, "generated_sql": None, "check": None, "execute": None, "safety": None}
+        if self._is_identity_question(message):
+            return {
+                "success": True,
+                "answer": "Tôi là Safy, AI Database Agent cục bộ giúp bạn thiết kế schema, viết/truy vấn SQL an toàn, kiểm tra trong sandbox và chỉ execute lên database thật khi bạn xác nhận.",
+                "generated_sql": None,
+                "check": None,
+                "execute": None,
+                "execute_box": {"draft_ready": False, "sql": "", "executable": False, "check_allowed": False},
+                "safety": {"workflow": "identity", "blocked": False},
+            }
+
+        recall_response = _context_file_recall_answer(parsed_command.message or message)
+        if recall_response is not None:
+            return recall_response
 
         state = self._load_state(session_id)
-        self._record_workflow_event(session_id, state, "perceive", metadata={"text_intent": classify_text_intent(parsed_command.message or message), "command_mode": command_mode})
+        request_message = parsed_command.message or message
+        self._record_workflow_event(session_id, state, "perceive", metadata={"text_intent": classify_text_intent(request_message), "command_mode": command_mode})
+        # Skip domain_schema_request for execution-level SQL commands
+        # e.g., "create table", "insert into" — these are not domain design requests
+        domain_schema_response = None
+        if not parsed_command.requires_execute:
+            domain_schema_response = self._handle_domain_schema_request(
+                message=request_message,
+                command_mode=command_mode,
+                session_id=session_id,
+                model_profile_id=model_profile_id,
+                target=target,
+                sandbox_id=sandbox_id,
+                database_profile_id=database_profile_id,
+                state=state,
+            )
+        if domain_schema_response is not None:
+            return domain_schema_response
         context_pack = self._build_context_pack(
             session_id=session_id,
             message=parsed_command.message or message,
@@ -1212,8 +1833,15 @@ class AgentRuntime:
             sandbox_id=sandbox_id,
             database_profile_id=database_profile_id,
         )
-        workflow_decision = self.workflow_engine.decide(parsed_command.message or message, state)
-        workflow_response = self._handle_workflow_decision(workflow_decision, context_pack, state)
+        schema_summary_response = self._maybe_schema_summary_answer(request_message, context_pack)
+        if schema_summary_response is not None:
+            return schema_summary_response
+
+        # Skip workflow_engine for explicit /execute commands
+        workflow_response = None
+        if command_mode != "execute":
+            workflow_decision = self.workflow_engine.decide(parsed_command.message or message, state)
+            workflow_response = self._handle_workflow_decision(workflow_decision, context_pack, state)
         if workflow_response is not None:
             return workflow_response
 
@@ -1233,14 +1861,7 @@ class AgentRuntime:
             return direct_read_response
 
         if command_mode != "execute" and parsed_command.requires_execute:
-            return {
-                "success": True,
-                "answer": DATABASE_COMMAND_REQUIRES_EXECUTE_REPLY,
-                "generated_sql": None,
-                "check": None,
-                "execute": None,
-                "safety": {"requires_execute": True, "skill": "command_router"},
-            }
+            command_mode = "execute"
 
         if command_mode == "execute":
             resolved_ctx = self.database_context_skill.resolve(target, sandbox_id, database_profile_id)

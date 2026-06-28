@@ -16,8 +16,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from Core.agent import AgentCore
-from Core.agent_execution_context import AgentExecutionContext
 from DataStore.config_loader import ConfigLoader, get_repo_root
 from DataStore.env_writer import EnvWriter, EnvWriterError
 from DataStore.env_secret_resolver import EnvSecretResolver, SecretResolverError
@@ -26,6 +24,7 @@ from DataStore.schema_graph_store import SchemaGraphStore, SchemaGraphStoreError
 from State.json_runtime_db import JsonRuntimeDB
 from Gateway.query_orchestrator import QueryOrchestrator, QueryOrchestratorContext
 from Agent.agent_runtime import AgentRuntime
+from Core.version import SAFY_VERSION
 from LLM.provider_health import test_profile as llm_test_profile
 from LLM.provider_profiles import ModelProfileError
 from LLM.provider_store import ModelProviderStore
@@ -33,11 +32,17 @@ from Logging.redact import redact_text
 from Gateway.db_drivers import get_schema as driver_get_schema, test_connection as driver_test_connection
 from Gateway.db_drivers.errors import DriverError
 from Gateway.db_drivers.sqlserver_driver import is_system_database
+from Gateway.sql_normalizer import normalize_sql
 from State.runtime_db import RuntimeDBError
 from Sandbox.sandbox_manager import SandboxError, SandboxManager
+from DataStore.context_file_store import ContextFileError, ContextFileStore, assemble_context_blocks
+from DataStore.sandbox_rule_store import SandboxRuleStore
+from Core.sandbox_rule_engine import SandboxRuleEngine
+from Tools.file_ingestion_tool import ingest_context_file
 
 from .runtime_store import envelope, error_envelope
-from .schemas import AgentChatRequest, ContextUrlFetchRequest, DatabaseLegacySaveRequest, DatabaseProfilePayload, DatabaseTestRequest, ModelLegacySaveRequest, ModelProviderPatchRequest, ModelProviderProfileRequest, QueryCheckRequest, QueryExecuteRequest, RecoveryResolveRequest, SandboxCreateRequest, SandboxRestoreRequest, SessionCreateRequest, SessionMessageRequest, UserLoginRequest
+from .meta import request_meta
+from .schemas import AgentChatRequest, ContextUrlFetchRequest, DatabaseLegacySaveRequest, DatabaseProfilePayload, DatabaseTestRequest, ModelLegacySaveRequest, ModelProviderPatchRequest, ModelProviderProfileRequest, QueryCheckRequest, QueryExecuteRequest, RecoveryResolveRequest, SandboxCreateRequest, SandboxRestoreRequest, SandboxRuleActionRequest, SandboxRuleDraftRequest, SessionCreateRequest, SessionMessageRequest, UserLoginRequest
 
 REPO_ROOT = get_repo_root()
 CONFIG = ConfigLoader(REPO_ROOT).load()
@@ -55,6 +60,9 @@ try:
 except Exception:
     SCHEMA_GRAPH_DIR = (REPO_ROOT / "Data" / "SchemaGraph").resolve()
 SCHEMA_GRAPH_STORE = SchemaGraphStore(SCHEMA_GRAPH_DIR)
+CONTEXT_FILE_STORE = ContextFileStore((REPO_ROOT / "Data" / "context_files").resolve())
+SANDBOX_RULE_STORE = SandboxRuleStore((REPO_ROOT / "Data" / "sandbox_rules").resolve())
+SANDBOX_RULE_ENGINE = SandboxRuleEngine()
 MODEL_PROFILE_STORE_PATH = (REPO_ROOT / "Data" / "model_profiles" / "model_profiles.json").resolve()
 MODEL_PROVIDER_STORE = ModelProviderStore(MODEL_PROFILE_STORE_PATH)
 SAFY_DEV_MODE_REQUESTED = bool(os.getenv("SAFY_DEV_MODE", "0") == "1")
@@ -65,6 +73,7 @@ if SAFY_DEV_MODE_REQUESTED and not TEST_RUNTIME_ALLOWED:
 QUERY_ORCHESTRATOR = QueryOrchestrator(QueryOrchestratorContext(PROFILE_RUNTIME_DIR, test_runtime_mode=TEST_RUNTIME_MODE))
 SANDBOX_MANAGER = SandboxManager(REPO_ROOT)
 QUERY_ORCHESTRATOR.sandbox_manager = SANDBOX_MANAGER
+QUERY_ORCHESTRATOR.sandbox_rule_store = SANDBOX_RULE_STORE
 
 def _database_store():
     return database_profile_store(DB_PROFILE_STORE_PATH)
@@ -89,15 +98,14 @@ def _load_db_profile(profile_id: str):
 def _load_schema_graph(profile_id: str):
     return _schema_graph_for_profile(_database_store().get(profile_id))
 
-AGENT_CORE = AgentCore(PROFILE_RUNTIME_DIR)
-AGENT_CORE.runtime_db = JsonRuntimeDB(PROFILE_RUNTIME_DIR)
+RUNTIME_DB = JsonRuntimeDB(PROFILE_RUNTIME_DIR)
 AGENT_RUNTIME = AgentRuntime(
     QUERY_ORCHESTRATOR, 
     MODEL_PROVIDER_STORE, 
     sandbox_manager=SANDBOX_MANAGER,
     database_profile_loader=_load_db_profile,
     schema_graph_loader=_load_schema_graph,
-    runtime_db=AGENT_CORE.runtime_db,
+    runtime_db=RUNTIME_DB,
 )
 CHECKS = QUERY_ORCHESTRATOR.checks
 
@@ -417,7 +425,7 @@ def _remove_ephemeral_context_from_result(result: Any, original_message: str) ->
     return result
 
 
-app = FastAPI(title="SAFY", version="1.1.0")
+app = FastAPI(title="SAFY", version=SAFY_VERSION)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins(),
@@ -491,10 +499,15 @@ def dashboard_script():
 def health():
     return envelope({
         "name": "SAFY",
-        "version": "1.1.0",
+        "version": SAFY_VERSION,
         "status": "ok",
-        "mode": "real_connected_db_readonly",
-        "storage": {"profiles": "json", "sessions": "json", "audit": "jsonl"},
+        "mode": "local_database_safety_gateway",
+        "storage": {
+            "profiles": "json",
+            "sessions": "json",
+            "query_runtime": "sqlite",
+            "audit": "sqlite",
+        },
     })
 
 
@@ -563,7 +576,9 @@ def _apply_database_login_username(profile: dict[str, Any]) -> dict[str, Any]:
     if database_type == "sqlserver" and authentication == "windows":
         mapped["username"] = ""
         return mapped
-    mapped["username"] = _database_login_username()
+    login_username = _database_login_username()
+    if login_username:
+        mapped["username"] = login_username
     return mapped
 
 
@@ -890,12 +905,18 @@ def _prepare_sandbox_after_connection(profile: dict[str, Any]) -> dict[str, Any]
 
 
 def _database_workflow_payload(profile: dict[str, Any], connection_result: dict[str, Any], sandbox_result: dict[str, Any]) -> dict[str, Any]:
+    sandbox = sandbox_result.get("sandbox") or {}
+    sandbox_status = str(sandbox.get("status") or sandbox.get("state") or sandbox_result.get("sandbox_status") or "unknown")
+    connection_status = "passed" if connection_result.get("success", True) else "failed"
     return {
         **_public_database_profile(profile),
-        "connection_status": "connected",
+        "profile_saved": True,
+        "profile_activated": bool(profile.get("active")),
+        "connection_status": "connected" if connection_status == "passed" else "failed",
+        "connection_test": {"status": connection_status, "result": connection_result},
         "connection_result": connection_result,
-        "sandbox": sandbox_result.get("sandbox"),
-        "sandbox_status": sandbox_result.get("sandbox_status"),
+        "sandbox": {**sandbox, "status": sandbox_status},
+        "sandbox_status": sandbox_result.get("sandbox_status") or sandbox_status,
         "sandbox_message": sandbox_result.get("sandbox_message"),
         "sandbox_error": sandbox_result.get("sandbox_error"),
         "secret_stored": bool(_database_secret_env(profile) or profile.get("has_raw_secret")),
@@ -1065,7 +1086,11 @@ def _normalize_url_key(value: str | None) -> str:
     parsed = urlparse(raw if "://" in raw else f"https://{raw}")
     scheme = (parsed.scheme or "https").lower()
     host = (parsed.hostname or "").lower()
-    port = f":{parsed.port}" if parsed.port else ""
+    try:
+        parsed_port = parsed.port
+    except ValueError:
+        return raw
+    port = f":{parsed_port}" if parsed_port else ""
     path = re.sub(r"/+", "/", parsed.path or "").rstrip("/")
     return f"{scheme}://{host}{port}{path}"
 
@@ -1301,7 +1326,7 @@ def agent_tools():
 @app.get("/agent/state/{chat_id}")
 def agent_state(chat_id: str):
     try:
-        state = AGENT_CORE.runtime_db.get_agent_state(chat_id)
+        state = RUNTIME_DB.get_agent_state(chat_id)
     except Exception:
         state = {}
     return envelope({"chat_id": chat_id, "agent_state": state})
@@ -1309,8 +1334,8 @@ def agent_state(chat_id: str):
 
 @app.delete("/agent/state/{chat_id}")
 def agent_state_clear(chat_id: str):
-    if hasattr(AGENT_CORE.runtime_db, "clear_agent_state"):
-        return envelope(AGENT_CORE.runtime_db.clear_agent_state(chat_id))
+    if hasattr(RUNTIME_DB, "clear_agent_state"):
+        return envelope(RUNTIME_DB.clear_agent_state(chat_id))
     return envelope({"chat_id": chat_id, "agent_state_cleared": False})
 
 
@@ -1319,19 +1344,19 @@ def agent_workflow(chat_id: str, limit: int = 100):
     state = {}
     events = []
     tool_calls = []
-    if hasattr(AGENT_CORE.runtime_db, "get_agent_state"):
+    if hasattr(RUNTIME_DB, "get_agent_state"):
         try:
-            state = AGENT_CORE.runtime_db.get_agent_state(chat_id)
+            state = RUNTIME_DB.get_agent_state(chat_id)
         except Exception:
             state = {}
-    if hasattr(AGENT_CORE.runtime_db, "list_workflow_events"):
+    if hasattr(RUNTIME_DB, "list_workflow_events"):
         try:
-            events = AGENT_CORE.runtime_db.list_workflow_events(chat_id, limit=limit)
+            events = RUNTIME_DB.list_workflow_events(chat_id, limit=limit)
         except Exception:
             events = []
-    if hasattr(AGENT_CORE.runtime_db, "list_tool_calls"):
+    if hasattr(RUNTIME_DB, "list_tool_calls"):
         try:
-            tool_calls = AGENT_CORE.runtime_db.list_tool_calls(chat_id, limit=limit)
+            tool_calls = RUNTIME_DB.list_tool_calls(chat_id, limit=limit)
         except Exception:
             tool_calls = []
     return envelope({"chat_id": chat_id, "agent_state": state, "workflow_events": events, "tool_calls": tool_calls})
@@ -1351,6 +1376,174 @@ def context_fetch_url(payload: ContextUrlFetchRequest):
         return error_envelope("CONTEXT_URL_FETCH_FAILED", "The URL could not be read safely.")
 
 
+def _context_file_error(exc: ContextFileError):
+    return error_envelope(exc.code, exc.message, exc.details)
+
+
+_CONTEXT_RECALL_FILENAME_RE = re.compile(r"(?:file\s+)?([A-Za-z0-9_.-]+\.(?:md|txt|docx|pdf|json|csv|html))", re.I)
+
+
+def _context_file_recall_status_answer(message: str, chat_id: str | None, database_profile_id: str | None = None) -> dict[str, Any] | None:
+    lower = str(message or "").lower()
+    if not any(term in lower for term in ("còn nhớ file", "nhớ file", "remember file", "file prompt", "tóm tắt file", "tom tat file")):
+        return None
+    match = _CONTEXT_RECALL_FILENAME_RE.search(str(message or ""))
+    filename = match.group(1) if match else "prompt.md"
+    status = CONTEXT_FILE_STORE.file_status_for_session(filename, chat_id=chat_id, database_profile_id=database_profile_id)
+    if status.get("status") == "active":
+        file_id = status["matches"][0]["file_id"]
+        text = CONTEXT_FILE_STORE.get_file_text(file_id)
+        preview = " ".join(text.split())[:900]
+        return {
+            "success": True,
+            "answer": f"Mình thấy file `{filename}` đang active trong session này. Nội dung chính là: {preview}",
+            "generated_sql": None,
+            "check": None,
+            "execute": None,
+            "safety": {"workflow": "context_file_recall", "context_file_active": True, "file_id": file_id},
+        }
+    if status.get("status") == "inactive":
+        return {
+            "success": True,
+            "answer": f"File `{filename}` có trong context file store nhưng hiện không active trong session này. Hãy reattach file hoặc chuyển về session đã upload file đó nếu muốn dùng lại nội dung.",
+            "generated_sql": None,
+            "check": None,
+            "execute": None,
+            "safety": {"workflow": "context_file_recall", "context_file_active": False, "file_found": True},
+        }
+    return {
+        "success": True,
+        "answer": f"Mình chưa tìm thấy file `{filename}` trong context file store của SAFY.",
+        "generated_sql": None,
+        "check": None,
+        "execute": None,
+        "safety": {"workflow": "context_file_recall", "context_file_active": False, "file_found": False},
+    }
+
+
+def _multipart_boundary(content_type: str) -> bytes | None:
+    match = re.search(r"boundary=([^;]+)", content_type or "", re.I)
+    if not match:
+        return None
+    value = match.group(1).strip().strip('"')
+    return value.encode("utf-8", errors="ignore")
+
+
+def _parse_multipart_upload(body: bytes, content_type: str) -> tuple[str | None, bytes, str | None]:
+    """Small multipart parser for a single uploaded file part.
+
+    FastAPI's full form parser requires an optional dependency. SAFY accepts the
+    dashboard's raw-byte upload, but this parser prevents tests/API clients that
+    use multipart/form-data from storing the raw multipart envelope as file text.
+    """
+    boundary = _multipart_boundary(content_type)
+    if not boundary:
+        raise ContextFileError("FILE_READ_FAILED", "Multipart upload boundary was missing.")
+    delimiter = b"--" + boundary
+    for part in body.split(delimiter):
+        part = part.strip(b"\r\n")
+        if not part or part == b"--":
+            continue
+        if part.endswith(b"--"):
+            part = part[:-2].rstrip(b"\r\n")
+        if b"\r\n\r\n" in part:
+            header_blob, payload = part.split(b"\r\n\r\n", 1)
+        elif b"\n\n" in part:
+            header_blob, payload = part.split(b"\n\n", 1)
+        else:
+            continue
+        headers = header_blob.decode("latin-1", errors="ignore")
+        disposition = re.search(r"Content-Disposition:\s*([^\r\n]+)", headers, re.I)
+        if not disposition or "filename=" not in disposition.group(1):
+            continue
+        filename_match = re.search(r'filename\*?=(?:UTF-8'')?"?([^";\r\n]+)"?', disposition.group(1), re.I)
+        filename = filename_match.group(1).strip() if filename_match else None
+        type_match = re.search(r"Content-Type:\s*([^\r\n]+)", headers, re.I)
+        payload = payload.rstrip(b"\r\n")
+        return filename, payload, type_match.group(1).strip() if type_match else None
+    raise ContextFileError("FILE_READ_FAILED", "Multipart upload did not contain a file part.")
+
+
+async def _read_context_file_upload(request: Request) -> tuple[str, bytes, str | None]:
+    body = await request.body()
+    content_type = request.headers.get("content-type") or ""
+    filename = request.headers.get("x-file-name") or request.query_params.get("filename") or "context_file.txt"
+    part_type: str | None = None
+    if content_type.lower().startswith("multipart/form-data"):
+        parsed_filename, body, part_type = _parse_multipart_upload(body, content_type)
+        if parsed_filename:
+            filename = parsed_filename
+    return filename, body, part_type or content_type or None
+
+
+@app.post("/context-files/upload")
+async def upload_context_file(request: Request):
+    try:
+        filename, data, _content_type = await _read_context_file_upload(request)
+        chat_id = request.headers.get("x-chat-id") or request.query_params.get("chat_id")
+        uploaded_by = request.headers.get("x-uploaded-by") or request.query_params.get("uploaded_by")
+        database_profile_id = request.headers.get("x-database-profile-id") or request.query_params.get("database_profile_id")
+        sandbox_id = request.headers.get("x-sandbox-id") or request.query_params.get("sandbox_id")
+        project_id = request.headers.get("x-project-id") or request.query_params.get("project_id")
+        scope = request.headers.get("x-context-scope") or request.query_params.get("scope") or "session"
+        result = ingest_context_file(CONTEXT_FILE_STORE, filename, data, uploaded_by=uploaded_by, chat_id=chat_id, database_profile_id=database_profile_id, sandbox_id=sandbox_id, project_id=project_id, scope=scope)
+        public = {k: result.get(k) for k in ("file_id", "filename", "safe_filename", "extension", "mime_type", "size_bytes", "sha256", "source_type", "uploaded_by", "chat_id", "database_profile_id", "sandbox_id", "project_id", "scope", "is_active", "is_pinned", "created_at", "extraction_status", "error_code", "text_char_count", "chunk_count", "preview")}
+        if public.get("error_code"):
+            return error_envelope(public["error_code"], "File text extraction produced no usable text.", public)
+        return envelope(public)
+    except ContextFileError as exc:
+        return _context_file_error(exc)
+    except Exception as exc:
+        return error_envelope("FILE_READ_FAILED", str(exc))
+
+
+@app.get("/context-files/storage")
+def context_files_storage():
+    return envelope(CONTEXT_FILE_STORE.storage_stats())
+
+
+@app.get("/context-files/session/{chat_id}")
+def context_files_for_session(chat_id: str):
+    return envelope(CONTEXT_FILE_STORE.session_files(chat_id))
+
+
+@app.post("/context-files/session/{chat_id}/{file_id}/detach")
+def detach_context_file_from_session(chat_id: str, file_id: str):
+    try:
+        return envelope(CONTEXT_FILE_STORE.detach_from_session(chat_id, file_id))
+    except ContextFileError as exc:
+        return _context_file_error(exc)
+
+
+@app.get("/context-files")
+def list_context_files(chat_id: str | None = None, database_profile_id: str | None = None):
+    return envelope(CONTEXT_FILE_STORE.list(chat_id=chat_id, database_profile_id=database_profile_id))
+
+
+@app.get("/context-files/{file_id}")
+def get_context_file(file_id: str):
+    try:
+        return envelope(CONTEXT_FILE_STORE.get(file_id))
+    except ContextFileError as exc:
+        return _context_file_error(exc)
+
+
+@app.get("/context-files/{file_id}/text")
+def get_context_file_text(file_id: str):
+    try:
+        return envelope({"file_id": file_id, "text": CONTEXT_FILE_STORE.read_text(file_id)})
+    except ContextFileError as exc:
+        return _context_file_error(exc)
+
+
+@app.delete("/context-files/{file_id}")
+def delete_context_file(file_id: str):
+    try:
+        return envelope(CONTEXT_FILE_STORE.delete(file_id))
+    except ContextFileError as exc:
+        return _context_file_error(exc)
+
+
 @app.post("/agent/chat")
 def agent_chat(payload: AgentChatRequest):
     chat_id = payload.session_id or payload.chat_id
@@ -1358,23 +1551,43 @@ def agent_chat(payload: AgentChatRequest):
         command_mode = str((payload.options or {}).get("command") or "chat").strip().lower()
         normalized_message = str(payload.message or "").strip().lower()
         context_text, context_summaries = _ephemeral_context_from_options(payload.options)
-        runtime_message = f"{payload.message}{context_text}" if context_text else payload.message
+        file_context_text = ""
+        file_context_summaries = []
+        explicit_context_file_ids = [file_id for file_id in (payload.context_file_ids or []) if file_id]
+        if chat_id and explicit_context_file_ids:
+            for file_id in explicit_context_file_ids:
+                CONTEXT_FILE_STORE.attach_to_session(str(chat_id), file_id)
+        context_file_ids = CONTEXT_FILE_STORE.resolve_for_context(chat_id=chat_id, database_profile_id=payload.database_profile_id, explicit_file_ids=explicit_context_file_ids)
+        if context_file_ids:
+            file_context_text, file_context_summaries = assemble_context_blocks(CONTEXT_FILE_STORE, context_file_ids)
+        combined_context = f"{context_text}{file_context_text}"
+        runtime_message = f"{payload.message}{combined_context}" if combined_context else payload.message
+        recall_status_answer = None
+        if not context_file_ids:
+            try:
+                recall_status_answer = _context_file_recall_status_answer(payload.message, chat_id, payload.database_profile_id)
+            except ContextFileError:
+                recall_status_answer = None
 
         if chat_id:
-            AGENT_CORE.runtime_db.create_session(chat_id, metadata={"source": "dashboard", "last_command": command_mode})
-            AGENT_CORE.runtime_db.add_message(chat_id, "user", payload.message, metadata={"command": command_mode, "context_sources": context_summaries})
+            RUNTIME_DB.create_session(chat_id, metadata={"source": "dashboard", "last_command": command_mode})
+            RUNTIME_DB.add_message(chat_id, "user", payload.message, metadata={"command": command_mode, "context_sources": context_summaries, "context_files": file_context_summaries})
+        if recall_status_answer is not None:
+            if chat_id:
+                RUNTIME_DB.add_message(chat_id, "assistant", str(recall_status_answer.get("answer") or ""), metadata=recall_status_answer)
+            return envelope(recall_status_answer)
 
         if command_mode in {"reset_schema", "reset-schema"} or normalized_message == "/reset_schema":
             result_payload = {"success": True, "answer": "All stored schema graphs were deleted.", "schema_action": SCHEMA_GRAPH_STORE.reset()}
             if chat_id:
-                AGENT_CORE.runtime_db.add_message(chat_id, "assistant", result_payload["answer"], metadata=result_payload)
+                RUNTIME_DB.add_message(chat_id, "assistant", result_payload["answer"], metadata=result_payload)
             return envelope(result_payload)
         if command_mode in {"delete_schema", "delete-schema"} or normalized_message == "/delete_schema":
             profile = _active_database_profile_raw()
             result = SCHEMA_GRAPH_STORE.delete(str(profile.get("profile_id"))) if profile else {"deleted": False}
             result_payload = {"success": True, "answer": "Active database schema graph was deleted.", "schema_action": result}
             if chat_id:
-                AGENT_CORE.runtime_db.add_message(chat_id, "assistant", result_payload["answer"], metadata=result_payload)
+                RUNTIME_DB.add_message(chat_id, "assistant", result_payload["answer"], metadata=result_payload)
             return envelope(result_payload)
 
         # 1. Resolve missing model_profile_id
@@ -1420,12 +1633,29 @@ def agent_chat(payload: AgentChatRequest):
         )
         result_payload = _remove_ephemeral_context_from_result(result_payload, payload.message)
         if chat_id:
-            AGENT_CORE.runtime_db.add_message(chat_id, "assistant", str(result_payload.get("answer") or ""), metadata=result_payload)
+            RUNTIME_DB.add_message(chat_id, "assistant", str(result_payload.get("answer") or ""), metadata=result_payload)
+        if result_payload.get("success") is False:
+            error = result_payload.get("error") if isinstance(result_payload.get("error"), dict) else {}
+            return {
+                "success": False,
+                "data": result_payload,
+                "error": {
+                    "code": error.get("code") or "AGENT_RUNTIME_FAILED",
+                    "message": redact_text(error.get("message") or result_payload.get("answer") or "Agent runtime failed."),
+                    "details": error.get("details") or {},
+                },
+                "meta": request_meta(error.get("request_id")),
+            }
         return envelope(result_payload)
+    except ContextFileError as exc:
+        return _context_file_error(exc)
     except ModelProfileError as exc:
         return model_profile_error(exc)
     except Exception as exc:
-        return error_envelope("AGENT_RUNTIME_ERROR", str(exc))
+        message = str(exc)
+        if message.startswith("LLM_") or message.startswith("BLOCKED_LLM_") or message.startswith("MODEL_TIMEOUT"):
+            return error_envelope("AGENT_RUNTIME_ERROR", message, {"stage": "llm_provider"})
+        return error_envelope("AGENT_RUNTIME_ERROR", message)
 
 
 @app.post("/agent/generate-sql")
@@ -1457,7 +1687,7 @@ def chat_new():
 
 @app.get("/sessions")
 def list_sessions(limit: int = 50):
-    return envelope(AGENT_CORE.runtime_db.list_sessions(limit=limit))
+    return envelope(RUNTIME_DB.list_sessions(limit=limit))
 
 
 @app.post("/sessions", status_code=201)
@@ -1466,14 +1696,14 @@ def create_session(payload: SessionCreateRequest | None = None):
     chat_id = payload.chat_id or f"chat_{uuid.uuid4().hex[:8]}"
     metadata = {**payload.metadata, "source": "dashboard"}
     # JsonRuntimeDB redacts metadata and strips display-only result rows before persistence.
-    session = AGENT_CORE.runtime_db.create_session(chat_id, metadata=metadata)
+    session = RUNTIME_DB.create_session(chat_id, metadata=metadata)
     return envelope({**session, "session_id": chat_id})
 
 
 @app.get("/sessions/{chat_id}")
 def session_detail(chat_id: str):
     try:
-        return envelope(AGENT_CORE.runtime_db.get_session(chat_id))
+        return envelope(RUNTIME_DB.get_session(chat_id))
     except RuntimeDBError as exc:
         return error_envelope(exc.code, str(exc))
     except Exception as exc:
@@ -1483,7 +1713,7 @@ def session_detail(chat_id: str):
 @app.delete("/sessions/{chat_id}")
 def delete_session(chat_id: str):
     try:
-        return envelope(AGENT_CORE.runtime_db.delete_session(chat_id))
+        return envelope(RUNTIME_DB.delete_session(chat_id))
     except RuntimeDBError as exc:
         return error_envelope(exc.code, str(exc))
     except Exception as exc:
@@ -1495,7 +1725,7 @@ def delete_session(chat_id: str):
 def session_history(chat_id: str, limit: int = 100):
     try:
 
-        messages = AGENT_CORE.runtime_db.list_messages(chat_id, limit=limit)
+        messages = RUNTIME_DB.list_messages(chat_id, limit=limit)
         return envelope(messages)
     except RuntimeDBError as exc:
         return error_envelope(exc.code, str(exc))
@@ -1506,7 +1736,7 @@ def session_history(chat_id: str, limit: int = 100):
 @app.post("/sessions/{chat_id}/messages")
 def append_session_message(chat_id: str, payload: SessionMessageRequest):
     try:
-        message_id = AGENT_CORE.runtime_db.add_message(
+        message_id = RUNTIME_DB.add_message(
             chat_id,
             payload.role,
             payload.content,
@@ -1524,7 +1754,7 @@ def append_session_message(chat_id: str, payload: SessionMessageRequest):
 @app.get("/sessions/{chat_id}/timeline")
 def session_timeline(chat_id: str, limit: int = 100):
     try:
-        return envelope(AGENT_CORE.runtime_db.session_timeline(chat_id, limit=limit))
+        return envelope(RUNTIME_DB.session_timeline(chat_id, limit=limit))
     except RuntimeDBError as exc:
         return error_envelope(exc.code, str(exc))
     except Exception as exc:
@@ -1533,13 +1763,13 @@ def session_timeline(chat_id: str, limit: int = 100):
 
 @app.get("/workspaces")
 def list_workspaces(chat_id: str | None = None, limit: int = 50):
-    return envelope(AGENT_CORE.runtime_db.list_workspaces(chat_id=chat_id, limit=limit))
+    return envelope(RUNTIME_DB.list_workspaces(chat_id=chat_id, limit=limit))
 
 
 @app.get("/workspaces/{workspace_id}")
 def get_workspace(workspace_id: str):
     try:
-        return envelope(AGENT_CORE.runtime_db.get_workspace(workspace_id))
+        return envelope(RUNTIME_DB.get_workspace(workspace_id))
     except RuntimeDBError as exc:
         return error_envelope(exc.code, str(exc))
     except Exception as exc:
@@ -1549,7 +1779,7 @@ def get_workspace(workspace_id: str):
 @app.post("/workspaces/{workspace_id}/cleanup")
 def cleanup_workspace(workspace_id: str):
     try:
-        workspace = AGENT_CORE.runtime_db.cleanup_workspace(workspace_id)
+        workspace = RUNTIME_DB.cleanup_workspace(workspace_id)
         return envelope({"workspace": workspace, "action": "marked_cleaned"})
     except RuntimeDBError as exc:
         return error_envelope(exc.code, str(exc))
@@ -1559,21 +1789,21 @@ def cleanup_workspace(workspace_id: str):
 
 @app.get("/recovery/status")
 def recovery_status(limit: int = 50):
-    # Use the active AgentCore runtime DB so records added immediately before the request are visible.
-    records = AGENT_CORE.runtime_db.list_recovery_records(status="open", limit=limit)
+    # Use the single active AgentRuntime state store so newly written records are immediately visible.
+    records = RUNTIME_DB.list_recovery_records(status="open", limit=limit)
     return envelope({"records": records})
 
 
 @app.post("/recovery/scan")
 def recovery_scan():
-    result = AGENT_CORE.runtime_db.recovery_scan()
+    result = RUNTIME_DB.recovery_scan()
     return envelope(result)
 
 
 @app.post("/recovery/resolve")
 def recovery_resolve(payload: RecoveryResolveRequest):
     try:
-        result = AGENT_CORE.runtime_db.recovery_resolve(payload.recovery_id, payload.action)
+        result = RUNTIME_DB.recovery_resolve(payload.recovery_id, payload.action)
         return envelope(result)
     except RuntimeDBError as exc:
         return error_envelope(exc.code, str(exc))
@@ -1838,10 +2068,14 @@ def save_database_legacy(payload: DatabaseLegacySaveRequest):
             "real_db_readonly": True,
             "allowed_root": payload.allowed_root,
         })
-        profile = _database_store().save(profile_payload, overwrite=True)
+        profile = _save_database_profile_payload(profile_payload, overwrite=True)
+        connection_result = _test_database_profile_dict(profile)
+        sandbox_result = _prepare_sandbox_after_connection(profile)
     except ProfileStoreError as exc:
         return error_envelope(exc.code, str(exc), exc.details)
-    return envelope({**_public_database_profile(profile), "secret_stored": bool(_database_secret_env(profile) or profile.get("has_raw_secret")), "runtime_preview_only": False})
+    except DriverError as exc:
+        return error_envelope(exc.error_code, str(exc), exc.details)
+    return envelope(_database_workflow_payload(profile, connection_result, sandbox_result))
 
 
 @app.post("/profiles/database/test")
@@ -1968,7 +2202,10 @@ def test_database_profile_payload(payload: DatabaseProfilePayload):
 def save_database_profile(payload: DatabaseProfilePayload):
     try:
         raw_payload = payload.model_dump(exclude_none=False, by_alias=True)
-        display_name = str(raw_payload.get("display_name") or raw_payload.get("profile_name") or "Main database").strip()
+        connection_name = str(raw_payload.get("connection_name") or raw_payload.get("display_name") or raw_payload.get("profile_name") or "Main database").strip()
+        raw_payload["connection_name"] = connection_name
+        raw_payload["display_name"] = raw_payload.get("display_name") or connection_name
+        display_name = str(raw_payload.get("display_name") or raw_payload.get("profile_name") or connection_name or "Main database").strip()
         profile_id = str(raw_payload.get("profile_id") or "main_database").strip()
         conflict = _database_name_conflict(display_name, profile_id)
         if conflict:
@@ -2003,8 +2240,6 @@ def save_database_profile(payload: DatabaseProfilePayload):
 
 
 @app.post("/database-profiles/{profile_id}/activate")
-
-
 def activate_database_profile(profile_id: str):
     try:
         stores = _database_store()
@@ -2012,9 +2247,18 @@ def activate_database_profile(profile_id: str):
     except ProfileStoreError as exc:
         return error_envelope(exc.code, str(exc), exc.details)
     invalidation = _invalidate_runtime_bindings("database_profile_activated", clear_context=True)
+    sandbox_result = _prepare_sandbox_after_connection(target)
     schema = _schema_graph_for_profile(target)
+    sandbox = sandbox_result.get("sandbox") or {}
+    sandbox_status = str(sandbox.get("status") or sandbox.get("state") or sandbox_result.get("sandbox_status") or "unknown")
     return envelope({
         **_public_database_profile(target),
+        "profile_activated": True,
+        "connection_test": {"status": "not_run"},
+        "sandbox": {**sandbox, "status": sandbox_status},
+        "sandbox_status": sandbox_result.get("sandbox_status") or sandbox_status,
+        "sandbox_message": sandbox_result.get("sandbox_message"),
+        "sandbox_error": sandbox_result.get("sandbox_error"),
         "schema_graph": {
             "status": schema.get("status"),
             "table_count": schema.get("table_count", 0),
@@ -2094,6 +2338,172 @@ def delete_sandbox(sandbox_id: str):
         return envelope(SANDBOX_MANAGER.delete(sandbox_id))
     except SandboxError as exc:
         return sandbox_error(exc)
+
+
+def _sandbox_scope(database_profile_id: str | None, sandbox_id: str | None) -> tuple[str, str]:
+    dbid = database_profile_id or (_active_database_profile_raw() or {}).get("profile_id") or "db_default"
+    sid = sandbox_id or f"db_{dbid}"
+    return str(dbid), str(sid)
+
+
+@app.get("/sandbox/status")
+def sandbox_status(database_profile_id: str | None = None, sandbox_id: str | None = None):
+    dbid, sid = _sandbox_scope(database_profile_id, sandbox_id)
+    rules = SANDBOX_RULE_STORE.list_rules(dbid, sid)
+    active_count = len(rules.get("active_rules", []))
+    conflict_count = len([r for r in rules.get("draft_rules", []) if str(r.get("status", "")).startswith("conflict") or r.get("status") == "pending_user_decision"])
+    status = "Rules active" if active_count else "Ready"
+    if conflict_count:
+        status = "Rule conflict"
+    return envelope({"database_profile_id": dbid, "sandbox_id": sid, "status": status, "schema_status": "Synced", "rules_active": active_count, "rules_conflict": conflict_count, "summary": f"Sandbox: {status}; Schema: Synced; Rules: {active_count} active, {conflict_count} conflict"})
+
+
+@app.get("/sandbox-rules")
+def sandbox_rules(database_profile_id: str, sandbox_id: str = "sandbox_default"):
+    return envelope(SANDBOX_RULE_STORE.list_rules(database_profile_id, sandbox_id))
+
+
+def _schema_for_rule_profile(database_profile_id: str | None) -> dict[str, Any]:
+    if not database_profile_id:
+        return {}
+    try:
+        return _schema_graph_for_profile(_database_store().get(database_profile_id))
+    except Exception:
+        return {}
+
+
+@app.post("/sandbox-rules/draft")
+def sandbox_rule_draft(payload: SandboxRuleDraftRequest):
+    data = payload.model_dump(exclude={"rule_id"})
+    rule = SANDBOX_RULE_STORE.create_draft(**data)
+    report = SANDBOX_RULE_ENGINE.validate_rule(rule, SANDBOX_RULE_STORE.list_rules(rule["database_profile_id"], rule["sandbox_id"]).get("active_rules", []), _schema_for_rule_profile(rule.get("database_profile_id")))
+    rule["parsed_rules"] = report.get("parsed_rules", [])
+    rule["status"] = report.get("status", "draft")
+    SANDBOX_RULE_STORE.save_rule(rule)
+    SANDBOX_RULE_STORE.write_validation_report(rule, report)
+    return envelope({"rule": rule, "validation_report": report})
+
+
+def _sandbox_rule_validation_message(report: dict[str, Any]) -> str:
+    status = report.get("status") or "unknown"
+    if status in {"conflict_rule", "pending_user_decision", "conflict_schema"}:
+        conflicts = report.get("conflicts") or []
+        first = (conflicts[0] or {}).get("message") if conflicts else "The rule conflicts with current rules or schema."
+        return f"Sandbox rule was not saved: {first}"
+    if status == "warning_only":
+        warnings = report.get("warnings") or []
+        return "Sandbox rule was not saved: " + (warnings[0] if warnings else "The rule is ambiguous and cannot be enforced deterministically.")
+    return "Sandbox rule was not saved because validation did not pass."
+
+
+@app.post("/sandbox-rules/save")
+def sandbox_rule_save(payload: SandboxRuleDraftRequest):
+    existing = SANDBOX_RULE_STORE.get_rule(payload.database_profile_id, payload.sandbox_id, payload.rule_id) if payload.rule_id else None
+    candidate = {
+        **(existing or {}),
+        "rule_id": payload.rule_id or "rule_pending_save",
+        "database_profile_id": payload.database_profile_id,
+        "sandbox_id": payload.sandbox_id,
+        "connection_name": payload.connection_name,
+        "source_type": payload.source_type,
+        "source_filename": payload.source_filename,
+        "raw_text": payload.raw_text,
+        "severity": payload.severity,
+    }
+    active = [r for r in SANDBOX_RULE_STORE.list_rules(payload.database_profile_id, payload.sandbox_id).get("active_rules", []) if r.get("rule_id") != payload.rule_id]
+    report = SANDBOX_RULE_ENGINE.validate_rule(candidate, active, _schema_for_rule_profile(payload.database_profile_id))
+    if report.get("status") != "draft":
+        return envelope({
+            "saved": False,
+            "rule": None,
+            "validation_report": report,
+            "message": _sandbox_rule_validation_message(report),
+        })
+
+    if existing:
+        rule = {**existing, "raw_text": payload.raw_text, "source_type": payload.source_type, "source_filename": payload.source_filename, "severity": payload.severity, "connection_name": payload.connection_name or existing.get("connection_name")}
+    else:
+        rule = SANDBOX_RULE_STORE.create_draft(
+            database_profile_id=payload.database_profile_id,
+            sandbox_id=payload.sandbox_id,
+            raw_text=payload.raw_text,
+            connection_name=payload.connection_name,
+            source_type=payload.source_type,
+            source_filename=payload.source_filename,
+            severity=payload.severity,
+        )
+    updated, activate_report = SANDBOX_RULE_ENGINE.activate(rule, active, _schema_for_rule_profile(payload.database_profile_id))
+    SANDBOX_RULE_STORE.save_rule(updated)
+    path = SANDBOX_RULE_STORE.write_validation_report(updated, activate_report)
+    return envelope({"saved": True, "rule": updated, "validation_report": activate_report, "validation_report_path": str(path), "message": "Sandbox rule saved and activated."})
+
+
+@app.post("/sandbox-rules/validate")
+def sandbox_rule_validate(payload: SandboxRuleActionRequest):
+    rule = SANDBOX_RULE_STORE.get_rule(payload.database_profile_id, payload.sandbox_id, payload.rule_id)
+    if not rule:
+        return error_envelope("SANDBOX_RULE_NOT_FOUND", "Sandbox rule was not found.")
+    report = SANDBOX_RULE_ENGINE.validate_rule(rule, SANDBOX_RULE_STORE.list_rules(payload.database_profile_id, payload.sandbox_id).get("active_rules", []), _schema_for_rule_profile(payload.database_profile_id))
+    rule["parsed_rules"] = report.get("parsed_rules", [])
+    rule["status"] = report.get("status", rule.get("status", "draft"))
+    SANDBOX_RULE_STORE.save_rule(rule)
+    path = SANDBOX_RULE_STORE.write_validation_report(rule, report)
+    return envelope({"rule": rule, "validation_report": report, "validation_report_path": str(path)})
+
+
+@app.post("/sandbox-rules/activate")
+def sandbox_rule_activate(payload: SandboxRuleActionRequest):
+    rule = SANDBOX_RULE_STORE.get_rule(payload.database_profile_id, payload.sandbox_id, payload.rule_id)
+    if not rule:
+        return error_envelope("SANDBOX_RULE_NOT_FOUND", "Sandbox rule was not found.")
+    active = SANDBOX_RULE_STORE.list_rules(payload.database_profile_id, payload.sandbox_id).get("active_rules", [])
+    updated, report = SANDBOX_RULE_ENGINE.activate(rule, active, _schema_for_rule_profile(payload.database_profile_id))
+    SANDBOX_RULE_STORE.save_rule(updated)
+    SANDBOX_RULE_STORE.write_validation_report(updated, report)
+    return envelope({"rule": updated, "validation_report": report})
+
+
+@app.post("/sandbox-rules/disable")
+def sandbox_rule_disable(payload: SandboxRuleActionRequest):
+    rule = SANDBOX_RULE_STORE.disable(payload.database_profile_id, payload.sandbox_id, payload.rule_id)
+    if not rule:
+        return error_envelope("SANDBOX_RULE_NOT_FOUND", "Active sandbox rule was not found.")
+    return envelope({"rule": rule})
+
+
+@app.post("/sandbox-rules/upload")
+async def sandbox_rule_upload(request: Request):
+    content_type = request.headers.get("content-type", "")
+    if content_type.startswith("application/json"):
+        payload = await request.json()
+        filename = str(payload.get("filename") or "rule.txt")
+        database_profile_id = str(payload.get("database_profile_id") or "")
+        sandbox_id = str(payload.get("sandbox_id") or "sandbox_default")
+        content = str(payload.get("raw_text") or payload.get("content") or "")
+    else:
+        if "multipart/form-data" not in content_type:
+            return error_envelope("SANDBOX_RULE_UPLOAD_FORMAT_UNSUPPORTED", "Use JSON or multipart/form-data for sandbox rule upload.")
+        form = await request.form()
+        database_profile_id = str(form.get("database_profile_id") or "")
+        sandbox_id = str(form.get("sandbox_id") or "sandbox_default")
+        upload = form.get("file")
+        filename = str(getattr(upload, "filename", "rule.txt"))
+        content = (await upload.read()).decode("utf-8", errors="replace") if upload is not None else ""
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".md", ".txt"}:
+        return error_envelope("SANDBOX_RULE_UNSUPPORTED_FILE_TYPE", "Sandbox rule files must be .md or .txt.")
+    rule = SANDBOX_RULE_STORE.create_draft(database_profile_id=database_profile_id, sandbox_id=sandbox_id, raw_text=content, source_type="file_upload", source_filename=filename)
+    return envelope({"rule": rule})
+
+
+@app.get("/sandbox-rules/{rule_id}/validation-report")
+def sandbox_rule_validation_report(rule_id: str, database_profile_id: str, sandbox_id: str = "sandbox_default"):
+    scope = SANDBOX_RULE_STORE.scope_dir(database_profile_id, sandbox_id) / "validation_reports"
+    reports = sorted(scope.glob(f"{rule_id}_*.json"))
+    if not reports:
+        return error_envelope("SANDBOX_RULE_VALIDATION_REPORT_NOT_FOUND", "No validation report found for this rule.")
+    import json
+    return envelope(json.loads(reports[-1].read_text(encoding="utf-8")))
 
 
 @app.post("/sandboxes/{sandbox_id}/restore")
@@ -2212,6 +2622,12 @@ def query_execute(payload: QueryExecuteRequest):
         return error_envelope(binding_error[0], binding_error[1])
 
     checked = QUERY_ORCHESTRATOR.checks.get(payload.check_id or "")
+    if payload.sql is not None and checked:
+        supplied_hash = QUERY_ORCHESTRATOR.sql_hash(normalize_sql(payload.sql).normalized_sql)
+        if supplied_hash != checked.get("sql_hash"):
+            return error_envelope("QUERY_SQL_HASH_MISMATCH", "SQL changed after Check Safety. Run Check Safety again.")
+        if payload.sql_hash and payload.sql_hash != supplied_hash:
+            return error_envelope("QUERY_SQL_HASH_MISMATCH", "SQL hash does not match the submitted SQL.")
     schema_change_expected = bool(checked and checked.get("invalidates_schema_snapshot"))
     try:
         ok, result = QUERY_ORCHESTRATOR.execute(

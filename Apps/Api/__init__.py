@@ -1,1 +1,0 @@
-"""SAFY API namespace."""

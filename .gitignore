@@ -13,6 +13,8 @@ Data/secrets/
 Data/TestFixtures/supabase/*.backup
 Data/TestFixtures/supabase/*.backup.gz
 Data/TestFixtures/supabase/*.dump
+Tests/
+Reports/
 
 .env.local
 .env.*.local
@@ -75,3 +77,31 @@ dist/
 *.egg-info/
 # Clean handoff outputs
 *_clean_handoff.zip
+
+# SAFY context file runtime store (keep folder skeleton only)
+Data/context_files/files/*
+!Data/context_files/files/.gitkeep
+Data/context_files/metadata/*.json
+!Data/context_files/metadata/.gitkeep
+Data/context_files/metadata/legacy/*
+!Data/context_files/metadata/legacy/.gitkeep
+Data/context_files/text/
+Data/context_files/metadata.json
+Data/context_files/session_bindings.json
+
+
+# SAFY generated clean/package artifacts
+Reports/packages/*.zip
+Reports/packages/*.sha256
+*_FULL_PROJECT_REVIEW_REPORT_*.md
+
+# Keep context-file store skeleton only; runtime uploaded content is local data.
+Data/context_files/files/*/original.*
+Data/context_files/files/*/extracted.txt
+Data/context_files/files/*/chunks.json
+Data/context_files/files/*/metadata.json
+
+# Sandbox Rules runtime data
+Data/sandbox_rules/rules_index.json
+Data/sandbox_rules/databases/
+!Data/sandbox_rules/.gitkeep

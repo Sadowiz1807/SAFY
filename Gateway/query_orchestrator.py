@@ -39,6 +39,8 @@ from .sql_classifier import (
 from .sql_guard import BLOCK_PERMISSION, evaluate_sql_guard
 from .statement_target_extractor import TargetExtraction, extract_targets
 from Sandbox.sandbox_manager import SandboxError, SandboxManager
+from Core.sandbox_rule_engine import SandboxRuleEngine
+from DataStore.sandbox_rule_store import SandboxRuleStore
 
 
 @dataclass(frozen=True)
@@ -58,6 +60,8 @@ class QueryOrchestrator:
         self.audit = AuditStore(context.runtime_dir / "audit.sqlite3")
         self.adapter = SandboxAdapter()
         self.sandbox_manager: SandboxManager | None = None
+        self.sandbox_rule_store: SandboxRuleStore | None = None
+        self.sandbox_rule_engine = SandboxRuleEngine()
         # Real execution is serialized so a one-time check_id cannot be raced
         # by concurrent requests and applied to the database more than once.
         self._execute_lock = threading.Lock()
@@ -295,6 +299,7 @@ class QueryOrchestrator:
         driver: str | None = None,
         dialect: str | None = None,
         database_profile: dict | None = None,
+        sandbox_rules: dict | None = None,
     ) -> dict:
         reasons = list(dict.fromkeys((warnings or []) + risk.risk_reasons + [code]))
         binding = self._binding_payload(
@@ -355,6 +360,7 @@ class QueryOrchestrator:
             "blocked_message": message,
             "error_code": code,
             "blocked_statement_indexes": (batch_info or {}).get("blocked_statement_indexes") or [],
+            "sandbox_rules": sandbox_rules or {"status": "not_configured", "violations": []},
         }
         self.audit.write_event(
             event_type="user_execute_box_query_blocked",
@@ -450,6 +456,14 @@ class QueryOrchestrator:
         )
         self.checks[check_id] = {**response, "target": target, "database_profile_id": database_profile_id, "consumed": False, "database_profile": database_profile or {}}
         return response
+
+    def _evaluate_sandbox_rules(self, sql: str, database_profile_id: str | None, sandbox_id: str | None) -> dict:
+        if not self.sandbox_rule_store or not database_profile_id or not sandbox_id:
+            return {"status": "not_configured", "violations": []}
+        rules = self.sandbox_rule_store.list_rules(database_profile_id, sandbox_id).get("active_rules", [])
+        result = self.sandbox_rule_engine.check_sql(sql, rules)
+        result["active_rule_count"] = len(rules)
+        return result
 
     def _user_execute_box_check(
         self,
@@ -567,6 +581,29 @@ class QueryOrchestrator:
                 warnings=["unknown_permission_mode"],
                 batch_info=batch_info,
                 database_profile=database_profile,
+                **binding,
+            )
+
+        rules_payload = self._evaluate_sandbox_rules(normalized_sql, database_profile_id, sandbox_id)
+        if rules_payload.get("status") == "failed":
+            return self._blocked_execute_box_check_response(
+                check_id=check_id,
+                sql_hash=sql_hash,
+                normalized_sql=normalized_sql,
+                classification=classification,
+                targets=targets,
+                risk=risk,
+                target=target,
+                database_profile_id=database_profile_id,
+                sandbox_id=sandbox_id,
+                permission_mode=permission_mode,
+                expires_at=expires_at,
+                code="SANDBOX_RULE_BLOCKED",
+                message="Active sandbox rule blocked this SQL before sandbox execution.",
+                warnings=["sandbox_rule_violation"],
+                batch_info=batch_info,
+                database_profile=database_profile,
+                sandbox_rules=rules_payload,
                 **binding,
             )
 
@@ -751,6 +788,7 @@ class QueryOrchestrator:
             "blocked_message": blocked_message,
             "error_code": error_code,
             "blocked_statement_indexes": (batch_info or {}).get("blocked_statement_indexes") or [],
+            "sandbox_rules": rules_payload,
         }
         self.audit.write_event(event_type="user_execute_box_query_check", action="query_check", check_id=check_id, sql_hash=sql_hash, metadata={"statement_type": classification.statement_type, "decision": decision, "database_profile_id": database_profile_id, "sandbox_id": sandbox_id})
         self.checks[check_id] = {
@@ -875,8 +913,10 @@ class QueryOrchestrator:
             )
 
     def _execute_once(self, check_id: str | None, sql_hash: str | None, target: str, user_decision: str | None, confirmation_code: str | None, database_profile_id: str | None = None, row_limit: int = 100, sandbox_id: str | None = None, context_generation: int | None = None, schema_generation: str | None = None, driver: str | None = None, dialect: str | None = None) -> tuple[bool, dict]:
-        if not check_id or check_id not in self.checks:
+        if not check_id:
             return False, {"code": "QUERY_CHECK_REQUIRED", "message": "Run /query/check before /query/execute."}
+        if check_id not in self.checks:
+            return False, {"code": "QUERY_CHECK_NOT_FOUND", "message": "Safety check was not found. Run Check Safety again."}
         check = self.checks[check_id]
         if check.get("invalidated"):
             return False, {
@@ -930,7 +970,7 @@ class QueryOrchestrator:
         elif target == "sandbox":
             return False, {"code": "QUERY_CHECK_TARGET_MISMATCH", "message": "Safety check target cannot execute against a different runtime target."}
         if sql_hash != check["sql_hash"]:
-            return False, {"code": "QUERY_CHECK_SQL_HASH_MISMATCH", "message": "SQL hash does not match the safety check."}
+            return False, {"code": "QUERY_SQL_HASH_MISMATCH", "message": "SQL hash does not match the safety check."}
         if user_decision == "no":
             check["consumed"] = True
             self.checks.pop(check_id, None)

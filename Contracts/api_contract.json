@@ -1,6 +1,71 @@
 {
-  "stage": "API contract - Contract-first Foundation",
-  "primary_query_endpoints": ["/query/check", "/query/execute"],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema_version": "2.0",
+  "source_of_truth": [
+    "Apps/Api/safy_api/main.py",
+    "Apps/Api/safy_api/schemas.py",
+    "Gateway/query_orchestrator.py",
+    "Agent/agent_runtime.py"
+  ],
+  "primary_flows": {
+    "agent_chat": {
+      "endpoint": "POST /agent/chat",
+      "runtime_authority": "Agent.agent_runtime.AgentRuntime",
+      "direct_connected_database_access": "read_only",
+      "domain_schema_behavior": {
+        "normal_chat": "validated preview only",
+        "execute_command": "multi-statement DDL draft in Execute Box",
+        "server_level_create_database": "forbidden",
+        "real_database_execution": "requires sandbox pass and explicit user execution"
+      }
+    },
+    "query_check": {
+      "endpoint": "POST /query/check",
+      "never_executes_real_database": true,
+      "binds": [
+        "normalized_sql",
+        "sql_hash",
+        "target",
+        "database_profile_id",
+        "sandbox_id",
+        "context_generation",
+        "schema_generation",
+        "driver",
+        "dialect"
+      ],
+      "write_or_ddl_requires_sandbox": true
+    },
+    "query_execute": {
+      "endpoint": "POST /query/execute",
+      "requires": ["check_id", "sql_hash", "explicit_user_decision"],
+      "exact_binding_required": true,
+      "one_time_check": true,
+      "replay_error": "QUERY_CHECK_CONSUMED"
+    }
+  },
+  "policy": {
+    "agent_connected_database": "read_only",
+    "write_and_non_destructive_ddl": "user_controlled_sandbox_then_real",
+    "destructive_statements": ["DROP", "TRUNCATE"],
+    "blocked_categories": [
+      "destructive_sql",
+      "database_or_server_administration",
+      "grant_revoke_and_security_administration",
+      "user_supplied_transaction_control",
+      "mixed_read_write_batches",
+      "unknown_or_unparseable_high_risk_sql"
+    ],
+    "fail_closed": true
+  },
+  "domain_schema": {
+    "catalog_authority": "DomainIntelligence/packs/registry.json",
+    "classification": "semantic_model_with_compiled_catalog_and_deterministic_validation",
+    "ambiguous_request": "clarify_with_user",
+    "default_domain": null,
+    "generated_statement_classes": ["CREATE TABLE", "CREATE INDEX"],
+    "minimum_table_count": 2,
+    "sandbox_required": true
+  },
   "high_risk_confirmation": {
     "visible_to_ui": true,
     "length": 4,
@@ -11,7 +76,27 @@
   },
   "secret_policy": {
     "raw_secret_in_response": false,
-    "json_secret_fields": ["api_key_env", "password_env"],
+    "raw_secret_in_persisted_profile": false,
+    "transient_request_fields": ["api_key", "password", "raw_secret"],
+    "persisted_secret_references": ["api_key_env", "password_env", "secret_env"],
     "masked_status_only": true
+  },
+  "canonical_profile_endpoints": {
+    "model": [
+      "GET /model-profiles",
+      "GET /model-profiles/active",
+      "POST /model-profiles",
+      "POST /model-profiles/{profile_id}/activate",
+      "POST /model-profiles/{profile_id}/test"
+    ],
+    "database": [
+      "GET /database-profiles",
+      "GET /database-profiles/active",
+      "POST /database-profiles",
+      "POST /database-profiles/test",
+      "POST /database-profiles/{profile_id}/activate",
+      "POST /database-profiles/{profile_id}/test",
+      "POST /database-profiles/{profile_id}/ensure-sandbox"
+    ]
   }
 }

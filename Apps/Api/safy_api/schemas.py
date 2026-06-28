@@ -26,6 +26,7 @@ class ModelProviderProfileRequest(BaseModel):
     is_active: bool = False
     capabilities: dict = Field(default_factory=dict)
     context_window: int | None = None
+    request_timeout_seconds: int = 180
 
     model_config = ConfigDict(extra="forbid")
 
@@ -40,6 +41,7 @@ class ModelProviderPatchRequest(BaseModel):
     is_active: bool | None = None
     capabilities: dict | None = None
     context_window: int | None = None
+    request_timeout_seconds: int | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -55,8 +57,9 @@ class DatabaseProfilePayload(BaseModel):
     schema_version: str = "1.0"
     profile_id: str | None = "main_database"
     profile_name: str | None = None
+    connection_name: str | None = None
     display_name: str | None = "Main database"
-    database_type: Literal["postgresql", "supabase_rpc", "mysql", "sqlite", "sqlserver", "oracle"] | None = None
+    database_type: Literal["postgresql", "supabase_rpc", "mysql", "mariadb", "sqlite", "sqlserver", "oracle"] | None = None
     provider: str | None = None
     driver: str | None = None
     dbms: str | None = None
@@ -91,7 +94,7 @@ class DatabaseProfilePayload(BaseModel):
     trust_server_certificate: bool = False
     odbc_driver: str | None = None
     sql_rpc_function: str | None = "safy_execute_sql"
-    sql_rpc_argument: str | None = "sql_text"
+    sql_rpc_argument: str | None = "sql"
     timeout_seconds: int = Field(default=15, ge=1, le=300)
     user_query_access_mode: Literal["credential_permissions", "read_only", "disabled"] = "credential_permissions"
     read_only: bool = True
@@ -106,7 +109,7 @@ class DatabaseLegacySaveRequest(BaseModel):
     display_name: str | None = "Main database"
     provider: Literal["unified", "self_hosted", "supabase", "google_cloud_sql", "aws_aurora"] = "self_hosted"
     base_url: str | None = None
-    driver: Literal["mysql", "postgresql", "postgres", "sqlite", "sqlserver", "oracle", "aurora_mysql", "aurora_postgresql", "supabase_rpc", "supabase_rest"] = "sqlite"
+    driver: Literal["mysql", "mariadb", "postgresql", "postgres", "sqlite", "sqlserver", "oracle", "aurora_mysql", "aurora_postgresql", "supabase_rpc", "supabase_rest"] = "sqlite"
     dbms: str | None = None
     engine: str | None = None
     host: str = "127.0.0.1"
@@ -132,6 +135,7 @@ class AgentChatRequest(BaseModel):
     chat_id: str | None = None
     session_id: str | None = None
     message: str
+    context_file_ids: list[str] = Field(default_factory=list)
     model_profile_id: str | None = None
     database_profile_id: str | None = None
     sandbox_id: str | None = None
@@ -183,6 +187,7 @@ class QueryCheckRequest(BaseModel):
 
 
 class QueryExecuteRequest(BaseModel):
+    sql: str | None = None
     check_id: str | None = None
     sql_hash: str | None = None
     chat_id: str | None = None
@@ -190,6 +195,7 @@ class QueryExecuteRequest(BaseModel):
     target: str = "connected_database"
     sandbox_id: str | None = None
     database_profile_id: str | None = None
+    user_query_access_mode: Literal["credential_permissions", "read_only", "disabled"] | None = None
     user_decision: Literal["yes", "no"] | None = None
     confirmation_code: str | None = Field(default=None, pattern=r"^\d{4}$")
     real_db_mode: bool = False
@@ -198,6 +204,28 @@ class QueryExecuteRequest(BaseModel):
     schema_generation: str | None = None
     driver: str | None = None
     dialect: str | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class SandboxRuleDraftRequest(BaseModel):
+    database_profile_id: str
+    sandbox_id: str = "sandbox_default"
+    raw_text: str
+    rule_id: str | None = None
+    connection_name: str | None = None
+    source_type: str = "manual_text"
+    source_filename: str | None = None
+    severity: Literal["block", "warn"] = "block"
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class SandboxRuleActionRequest(BaseModel):
+    database_profile_id: str
+    sandbox_id: str = "sandbox_default"
+    rule_id: str
+    decision: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 

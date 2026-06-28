@@ -1,86 +1,193 @@
-# SAFY Source Map
+# SAFY Canonical Source
 
-**Document status:** `CURRENT`  
-**Purpose:** Canonical ownership map for SAFY product/runtime source.  
-**Operational snapshot:** Read `current_state.md` immediately after this file.
+SAFY is a bounded, human-in-the-loop AI database safety agent. This document is the technical Source of Truth for runtime ownership and contracts. Current application version: `1.2.0`.
 
-## Authority
+## System Boundaries
 
-- Explicit current user decisions are highest priority.
-- `SOUL.md` owns non-negotiable product and safety rules.
-- This file owns canonical runtime source locations and module ownership.
-- `current_state.md` records the implemented/verified state of those sources.
-- `Safy_Docs/` files are target specifications unless `current_state.md` marks the capability implemented.
-- `Docs/Hermes_Execution/report/` files are historical patch evidence only.
-
-## Canonical runtime source files
-
-### API and application composition
-
-- `Apps/Api/safy_api/main.py`: FastAPI routes, auth/profile lifecycle, context fetch boundary, agent APIs, query check/execute APIs, sandbox APIs, and Schema Graph APIs.
-- `Apps/Api/safy_api/schemas.py`: API request models, including the unified all-database `DatabaseProfilePayload` contract.
-- `Apps/Api/safy_api/cli.py`: `safy run` and CLI behavior.
-
-### Web UI
-
-- `Apps/Web/login.html` + `Apps/Web/login.js`: login page.
-- `Apps/Web/dashboard.html` + `Apps/Web/dashboard.js`: dashboard, chat, compact Type Database-aware connection fields without per-field description text, read-only SAFY-login database username mapping, unified database payload construction, profile controls, context sources, Execute Box, and sidebar behavior.
-- `Apps/Web/schema-graph.html` + `Apps/Web/schema-graph.js`: dedicated Schema Graph implementation served at `/Dashboard/{schema_ui_name}`, replacing the Dashboard view while preserving browser Back navigation; owns grid rendering, node dragging, relationship redraw, pan, and cursor-centered zoom.
-- `Apps/Web/styles.css`: shared UI styles.
-- `Apps/Web/index.html`: compatibility redirect to login.
-- `Apps/Web/safy-ui.js`: compatibility shim for stale cached dashboard HTML; the maintained implementation is `dashboard.js`.
-
-`Apps/Web_backup_before_split/` is backup-only and is not runtime source.
-
-### Agent and workflow
-
-- `Agent/agent_runtime.py`: unified agent workflow orchestration, including bounded compiled-domain context routing before SQL draft generation.
-- `Agent/schema_context.py`: schema context summarization.
-- `Core/`: workflow state, context packs, skill loading/registry/actions, planning, policy, and deterministic review.
-- `DomainIntelligence/`: compiled SAFY domain-pack contracts, compiler, registry, router, retriever, context builder, cache, security checks, CLI handlers, and canonical artifact subdirectories: `packs/`, `reports/`, and `work/`. Root-level `DomainBuild/` and `DomainPacks/` are not current runtime source locations.
-- `Skills/`: canonical skill directories and `SKILL.md` filenames are lowercase directory names plus uppercase `SKILL.md`; `Scripts/normalize_skill_git_case.ps1` is the one-time Windows Git-index migration helper.
-- Wheel resources are declared in `pyproject.toml`; bundled runtime assets include `Configs/`, `Apps/Web/`, `Skills/`, and `DomainIntelligence/packs/`.
-- `Scripts/package_clean_handoff.py` is the canonical secret-safe source handoff packager; do not archive the repository root manually.
-
-### Database safety and execution
-
-- `Gateway/query_orchestrator.py`: authoritative SQL check, sandbox validation, one-time check binding, and real execution gate.
-- `Gateway/sql_normalizer.py`: SQL normalization.
-- `Gateway/sql_classifier.py`: SQL classification.
-- `Gateway/statement_target_extractor.py`: statement target extraction.
-- `Gateway/risk_analyzer.py`: risk classification.
-- `Gateway/permission_checker.py`: saved profile permission enforcement.
-- `Gateway/real_db_policy.py`: agent-direct real database read-only policy.
-- `Gateway/db_drivers/`: provider/driver routing and real database drivers.
-
-### Sandbox, state, profiles, and audit
-
-- `Sandbox/sandbox_manager.py`: sandbox lifecycle and validation.
-- `Sandbox/docker_manager.py`: Docker runtime management.
-- `Sandbox/restore_manager.py`: restore validation and bounded extraction.
-- `State/`: session/runtime persistence and sanitized workflow state.
-- `Audit/`: audit schema/store/logger.
-- `Logging/redact.py`: redaction boundary.
-- `DataStore/profile_store.py`: authoritative database-type classification and structured connection-field normalization. For native password-authenticated databases, API/runtime layers intentionally map the database username to the authenticated SAFY login username; Supabase API/RPC, SQLite, and SQL Server Windows Authentication are exceptions.
-- `DataStore/`: environment secret references, profile persistence, and Schema Graph persistence.
-
-### Skills and tools
-
-- `Skills/`: document-driven skill packs. The current canonical SQL skill name is `text_to_sql`.
-- `Configs/skills.yaml`: skill loading configuration.
-- `Tools/` and runtime registration in `Agent/agent_runtime.py`: shared tool implementations and metadata.
-- `Configs/toolsets.yaml`: declarative toolset/policy mirror; it does not override the QueryOrchestrator.
-
-## Runtime data boundary
-
-Runtime data is stored under `Data/` and is intentionally resettable. Secrets, sessions, sandboxes, local databases, caches, logs, and generated runtime state must not be treated as source code or committed with real values.
-
-## Required reading order for agents
+Runtime authority is:
 
 ```text
-SOUL.md
-→ SAFY_source.md
-→ current_state.md
-→ relevant source files
-→ relevant tests
+Dashboard / CLI
+→ FastAPI (`Apps/Api/safy_api/main.py`)
+→ AgentRuntime (`Agent/agent_runtime.py`)
+→ deterministic safety core (`Gateway/`, `Sandbox/`, `Audit/`)
 ```
+
+Legacy `AgentCore`, legacy intent files, and `Providers/` are not active runtime authority.
+
+## Module Ownership
+
+- `Apps/Web/`: Dashboard, login, Schema Graph UI, responsive layout, browser safety-binding state.
+- `Apps/Api/safy_api/`: FastAPI routes, request/response envelopes, profile APIs, query check/execute endpoints.
+- `Agent/agent_runtime.py`: bounded workflow orchestration and state recording.
+- `DomainIntelligence/`: compiled domain catalog, domain resolution, schema draft workflow.
+- `LLM/`: OpenAI-compatible provider profiles/adapters; timeout is `request_timeout_seconds = 180`.
+- `Gateway/`: SQL normalization, policy, driver/dialect resolution, query orchestrator, database drivers.
+- `Sandbox/`: sandbox lifecycle and SQL validation.
+- `Audit/`: structured audit storage and redaction.
+- `DataStore/`: profile/session/schema graph persistence contracts.
+- `Tests/`: regression, integration, UI helper, packaging and Source-of-Truth tests.
+- `Reports/` and `Tests/evidence/`: task reports and sanitized evidence only.
+
+## Request Flow
+
+```text
+User request
+→ Dashboard command or CLI
+→ FastAPI envelope
+→ AgentRuntime finite workflow
+→ optional model/domain draft (UNTRUSTED_DRAFT)
+→ Execute Box draft
+→ /query/check
+→ sandbox validation and immutable check artifact
+→ explicit user Execute
+→ /query/execute binding validation
+→ real database driver/RPC
+→ audit and UI result
+```
+
+## AgentRuntime Scope
+
+AgentRuntime may resolve intent, ask clarification, call bounded tools, request model drafts, populate Execute Box, and record workflow history. It cannot approve real execution, weaken policy, bypass sandbox, or retry unknown database writes.
+
+## LLM Boundary
+
+All LLM output is `UNTRUSTED_DRAFT`. The model may draft SQL/schema and narrative, but deterministic parsing, policy, sandbox, binding and execution decide whether anything can run.
+
+## Domain Resolution
+
+`DomainIntelligence/packs/registry.json` is the runtime domain catalog. Clear domains can be selected; ambiguous, unknown, typo, or multi-domain requests ask clarification. SAFY must not default ambiguous schema creation to e-commerce.
+
+## Execute Box Contract
+
+The Execute Box is the canonical editable SQL draft. Chat artifacts are read-only snapshots. Check Safety operates on the exact current Execute Box SQL. Manual edits invalidate previous checks.
+
+## Policy Engine
+
+The deterministic SQL policy blocks destructive/admin/unknown operations unless a separately designed workflow exists. CREATE TABLE and CREATE INDEX can be drafted and sandbox-validated; server-level `CREATE DATABASE`, DROP, TRUNCATE, GRANT, REVOKE, role/user/admin, procedure/function/policy, unsafe transaction control, and mixed unsafe batches fail closed.
+
+## Sandbox Lifecycle
+
+Save/activate may ensure or resolve a sandbox when a DBMS has an adapter. Sandbox errors must be specific: `DOCKER_DAEMON_NOT_RUNNING`, `SANDBOX_CONTAINER_NOT_RUNNING`, `SANDBOX_CONTAINER_MISSING`, `SANDBOX_RECOVERY_FAILED`, `SANDBOX_HEALTHCHECK_FAILED`, `SANDBOX_SQL_VALIDATION_FAILED`. `executed_in_sandbox=true` only when SQL was actually sent to the sandbox database.
+
+## Check Artifact Schema
+
+A valid check artifact includes at least:
+
+```text
+check_id
+sql_hash
+target
+database_profile_id
+sandbox_id
+chat_id/session_id context via request binding
+context_generation
+schema_generation
+driver
+dialect
+user_query_access_mode
+expires_at
+safety_status
+check_passed
+allowed_to_attempt
+sandbox_validated
+```
+
+The backend is authority; browser state is only a convenience cache.
+
+## Execute Binding
+
+Execute requires a valid unexpired, unconsumed check. The submitted SQL hash, profile, sandbox, target, context generation, schema generation, driver, dialect, chat/session binding and target must match the check. Frontend invalidates the binding before dispatching Execute. Backend consumes the check before real user-controlled execution attempts.
+
+## Database Profile Contract
+
+Profiles distinguish:
+
+```text
+provider
+connection_kind
+transport
+driver
+dbms
+dialect
+sandbox_adapter
+capabilities
+live_certification
+```
+
+`driver != dialect`. `supabase_rpc` is a driver/transport path. `postgresql` is the DBMS/dialect for Supabase PostgreSQL. MariaDB aliases to MySQL where supported.
+
+## Supabase RPC Contract
+
+Canonical write/DDL RPC:
+
+```text
+function: safy_execute_sql
+argument: sql
+signature: public.safy_execute_sql(sql text)
+```
+
+The driver sends PostgREST body `{ "sql": "..." }`. `sql_text` is not canonical for this function.
+
+## Audit Contract
+
+Audit records must include request/check correlation, profile/sandbox/driver/dialect, policy decision, sandbox result and execution result where available. Audit must never store API keys, Authorization headers, service-role keys, passwords, full DSNs, raw secret env values, or unnecessary result rows.
+
+## Error Taxonomy
+
+Errors are structured envelopes. Examples: `QUERY_CHECK_REQUIRED`, `QUERY_CHECK_NOT_FOUND`, `QUERY_CHECK_EXPIRED`, `QUERY_CHECK_STALE`, `QUERY_SQL_HASH_MISMATCH`, `SANDBOX_SQL_VALIDATION_FAILED`, `SUPABASE_RPC_NOT_INSTALLED`, `MODEL_TIMEOUT`. Runtime failures must not be reported as success.
+
+## UI State Model
+
+Dashboard state mirrors server authority. Browser safety bindings are ephemeral and invalidated on SQL edit, new draft, profile/sandbox/session/chat change, reload, expiry, failed check, execute dispatch, or backend stale/mismatch response. Execute buttons must be physically disabled, not only restyled.
+
+## Responsive Layout Rules
+
+Desktop shell uses responsive grid concepts:
+
+```css
+grid-template-columns: minmax(220px, 300px) minmax(0, 1fr) minmax(340px, 460px);
+```
+
+Main grid/flex children must use `min-width: 0` and `min-height: 0`. Page shell must not create horizontal overflow. Header chips must wrap/ellipsis. At tablet/mobile breakpoints, sidebar becomes drawer/rail and Execute becomes a sheet/full-width panel.
+
+## File Context Ingestion Boundary
+
+File Prompt Reader V1 is context input, not policy authority. Uploaded `.txt`, `.md`, `.docx`, and text-based `.pdf` files are validated, stored outside the web static tree, extracted to text, and assembled into bounded prompt context. File content is treated as user-provided document data only; it cannot override system/developer/project safety instructions, cannot approve Check Safety, cannot approve Execute, and cannot change SQL policy.
+
+## Business Rule Boundary
+
+Current SAFY implements technical SQL safety policies and database constraints. A generic business-rule assertion engine, domain fixtures, post-condition queries, and policy-as-code plugins are not currently implemented.
+
+The LLM may suggest a business rule, but deterministic code must evaluate it before any claim is treated as enforced.
+
+## Testing Strategy
+
+Every task must separate baseline dirty tree from task delta. Tests can be `PASS`, `FAIL`, `BLOCKED`, `NOT_RUN`, `NOT_APPLICABLE`, or `NOT_RERUN_UNAFFECTED`. No PASS may be claimed for unrun cases. Browser layout tests must include overflow assertions and screenshots where possible. Real database tests must avoid destructive cleanup and must not auto-retry unknown writes.
+
+## Packaging Rule
+
+```text
+<= 6 source files modified → send the modified source files
+> 6 source files modified  → send a full clean project package
+```
+
+Reports/evidence/test CSVs are packaged with the handoff but do not count as source files. Packages must exclude `.env`, secrets, passwords, service-role keys, runtime sessions, sandbox data, database files, caches, `node_modules`, and secret-bearing logs.
+
+## Context Files and Natural Database Task Routing
+
+Uploaded prompt files are user context, not policy authority. The AI may use active prompt-context files to draft and explain, but deterministic SAFY boundaries remain authoritative: SQL policy, sandbox validation, Check Safety binding, Execute authorization and audit cannot be overridden by file content.
+
+Context file metadata includes session/database/project scope foundations (`scope`, `source_type`, `chat_id`, `database_profile_id`, `sandbox_id`, `project_id`, `is_active`, `is_pinned`). V2 only activates prompt-context retrieval; future business-rule or sandbox-rule files require explicit rule activation and are not enforced by this task.
+
+Natural language database tasks and `/Execute` commands route into the same safe database workflow. AI drafts and routes; deterministic safety checks; the user confirms Execute. Write, DDL and DML never auto-execute against the real database from a plain chat message.
+
+## Context File Recall Core
+
+Active prompt-context files are session-bound user context. SAFY resolves explicit `context_file_ids` first and falls back to active files bound to the current `chat_id` when the request omits explicit ids. Session-scoped files do not leak into other sessions or new chats, and detaching a file prevents later prompt injection.
+
+File content is user-provided context, not policy authority. Prompt files can inform the agent and be recalled inside the active session, but they cannot approve Execute, override safety policy, or change deterministic guard behavior.
+
+## Sandbox Rules V1
+
+Sandbox rules are deterministic safety constraints scoped to database_profile_id + sandbox_id. Prompt/context files are not sandbox rules. Rule conflict is a user-decision state, not an auto-repair trigger. SAFY may propose additive schema drafts, but must not auto-execute or delete schema/data.

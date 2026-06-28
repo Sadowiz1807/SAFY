@@ -64,7 +64,36 @@ class SandboxManager:
     @staticmethod
     def _sql_requires_schema_readiness(sql: str) -> bool:
         classification = classify_sql(sql)
-        if classification.statement_type in {SELECT, INSERT, UPDATE, DELETE, MERGE, ALTER, DROP, TRUNCATE, MULTI_STATEMENT}:
+        if classification.statement_type == MULTI_STATEMENT:
+            child_statements = classification.normalized.statements
+            child_classifications = [classify_sql(statement) for statement in child_statements]
+            if child_classifications and all(child.statement_type == "CREATE" for child in child_classifications):
+                created_tables: set[str] = set()
+                index_dependencies: list[str] = []
+                for statement in child_statements:
+                    table_match = re.match(
+                        r"^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([A-Za-z_][A-Za-z0-9_\.]*|[\"`\[][^\]\"`]+[\]\"`]?)",
+                        statement,
+                        re.IGNORECASE,
+                    )
+                    if table_match:
+                        created_tables.add(table_match.group(1).strip('`"[]').lower())
+                        continue
+                    index_match = re.match(
+                        r"^\s*CREATE\s+(?:UNIQUE\s+)?INDEX\s+.+?\s+ON\s+([A-Za-z_][A-Za-z0-9_\.]*|[\"`\[][^\]\"`]+[\]\"`]?)",
+                        statement,
+                        re.IGNORECASE | re.DOTALL,
+                    )
+                    if index_match:
+                        index_dependencies.append(index_match.group(1).strip('`"[]').lower())
+                        continue
+                    return True
+                # A schema-creation batch is self-contained when each CREATE INDEX
+                # targets a table created earlier/in the same batch. Such a batch
+                # is intentionally valid against an empty sandbox.
+                return any(table not in created_tables for table in index_dependencies)
+            return True
+        if classification.statement_type in {SELECT, INSERT, UPDATE, DELETE, MERGE, ALTER, DROP, TRUNCATE}:
             return True
         if classification.statement_type == "CREATE":
             # A standalone CREATE TABLE can be validated in a clean sandbox.

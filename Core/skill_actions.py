@@ -11,6 +11,7 @@ from Gateway.sql_normalizer import sanitize_sql_input
 from Core.semantic_action_plan import (
     CHAT,
     READ,
+    CREATE_OBJECT,
     UNKNOWN_OPERATION,
     SemanticActionPlan,
     plan_from_explicit_sql,
@@ -45,6 +46,7 @@ class CommandRouterSkill:
         "insert", "update", "delete", "drop", "mysql", "postgres", "postgresql", "sqlite",
         "oracle", "sql server", "dữ liệu", "du lieu", "bảng", "bang", "truy vấn", "truy van",
         "cột", "cot", "hàng", "hang", "orders", "users", "customers",
+        "bao nhiêu bảng", "bao nhieu bang", "có mấy bảng", "co may bang", "tạo", "tao", "thêm", "them",
     ]
     execute_patterns = [
         r"create\s+table", r"alter\s+table", r"drop\s+table", r"truncate\s+table",
@@ -53,6 +55,8 @@ class CommandRouterSkill:
         r"describe\s+\w+", r"explain\s+select", r"run\s+query", r"execute\s+query",
         r"generate\s+sql", r"truy\s+vấn", r"truy\s+van", r"liệt\s+kê", r"liet\s+ke",
         r"hiển\s+thị", r"hien\s+thi", r"xem\s+(?:dữ\s+liệu|du\s+lieu|bảng|bang)", r"tạo\s+bảng", r"tao\s+bang",
+        r"thêm\s+cột", r"them\s+cot", r"kiểm\s+tra\s+(?:database|db)", r"kiem\s+tra\s+(?:database|db)",
+        r"bao\s+nhiêu\s+bảng", r"bao\s+nhieu\s+bang", r"có\s+mấy\s+bảng", r"co\s+may\s+bang",
     ]
 
     def parse(self, message: str, command_mode: str | None = None) -> ParsedCommand:
@@ -72,6 +76,8 @@ class CommandRouterSkill:
             action = "execute_sql_draft"
         is_database_task = any(keyword in lower for keyword in self.database_keywords)
         requires_execute = any(re.search(pattern, lower, re.I) for pattern in self.execute_patterns)
+        if mode == "execute":
+            requires_execute = False
         return ParsedCommand(mode, action, normalized_message or stripped, raw, is_database_task, requires_execute)
 
 
@@ -229,6 +235,99 @@ class TextToSqlSkill:
         ):
             return ""
         return text.rstrip("`").strip()
+
+    def _identifier(self, name: str) -> str | None:
+        candidate = re.sub(r"[^A-Za-z0-9_]", "_", str(name or "").strip())
+        candidate = re.sub(r"_+", "_", candidate).strip("_")
+        if not candidate or not re.match(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$", candidate):
+            return None
+        return candidate
+
+    def _maybe_deterministic_create_table(self, request: str, target_payload: dict[str, Any]) -> dict[str, Any] | None:
+        """Draft simple CREATE TABLE SQL without calling an LLM.
+
+        This covers the common UAT/user path: Vietnamese/English requests such as
+        "tạo bảng A có 2 cột id và address". It is intentionally narrow: only
+        simple table identifiers and column identifiers are accepted, and all
+        non-id columns default to TEXT so the draft remains reviewable before
+        Check Safety.
+        """
+        text = str(request or "").strip()
+        if not text:
+            return None
+        match = re.search(r"(?:tạo|tao|create)\s+(?:cho\s+tôi\s+|cho\s+toi\s+)?(?:bảng|bang|table)\s+([A-Za-z_][A-Za-z0-9_]*)", text, re.I)
+        if not match:
+            return None
+        table = self._identifier(match.group(1))
+        if not table:
+            return None
+        tail = text[match.end():]
+        col_part_match = re.search(r"(?:có|co|gồm|gom|với|voi|with|columns?|cột|cot)\s+(.*)$", tail, re.I)
+        col_part = col_part_match.group(1) if col_part_match else tail
+        col_part = re.sub(r"\b\d+\s*(?:cột|cot|columns?)\b", " ", col_part, flags=re.I)
+        col_part = re.sub(r"\b(?:cột|cot|columns?|gồm|gom|có|co|với|voi|là|la|and)\b", " ", col_part, flags=re.I)
+        raw_cols = re.split(r"\s*(?:,|;|\bvà\b|\bva\b|\band\b)\s*", col_part, flags=re.I)
+        cols: list[str] = []
+        for raw in raw_cols:
+            value = re.sub(r"\b(?:primary\s+key|pk|text|int|integer|varchar|address|địa\s+chỉ|dia\s+chi)\b", lambda m: m.group(0), raw, flags=re.I).strip()
+            # Pick the first identifier token from each segment.
+            token_match = re.search(r"[A-Za-z_][A-Za-z0-9_]*", value)
+            if not token_match:
+                continue
+            ident = self._identifier(token_match.group(0))
+            if ident and ident.lower() not in {"bang", "bảng", "cot", "cột", "co", "có", "gom", "gồm"} and ident not in cols:
+                cols.append(ident)
+        if not cols:
+            # A CREATE TABLE with no columns is not useful; fail to normal planner.
+            return None
+        dialect = str(target_payload.get("dialect") or target_payload.get("driver") or target_payload.get("database_type") or "").lower()
+        int_type = "INT" if dialect in {"mysql", "mariadb", "sqlserver"} else "INTEGER"
+        lines = []
+        has_pk = False
+        for col in cols:
+            if col.lower() == "id" and not has_pk:
+                lines.append(f"    {col} {int_type} PRIMARY KEY")
+                has_pk = True
+            else:
+                lines.append(f"    {col} TEXT")
+        sql = f"CREATE TABLE {table} (\n" + ",\n".join(lines) + "\n);"
+        plan = SemanticActionPlan(
+            operation=CREATE_OBJECT,
+            scope="SINGLE_OBJECT",
+            object_type="TABLE",
+            targets=[table],
+            schema_effect="SCHEMA_WRITE",
+            requires_schema=False,
+            requires_confirmation=True,
+            confidence=0.95,
+            rationale="Deterministic parser recognized a simple create-table request.",
+            source="deterministic_create_table",
+        )
+        consistency = validate_sql_against_plan(sql, plan)
+        if not consistency.get("ok"):
+            return None
+        parsed = {
+            "intent": plan.operation,
+            "sql": sql,
+            "explanation": "Generated a deterministic CREATE TABLE draft. Review it, then run Check Safety before Execute.",
+            "target_hint": target_payload.get("target"),
+            "requires_confirmation": True,
+            "deterministic": True,
+        }
+        return {
+            "generated_sql": sql,
+            "answer": parsed["explanation"],
+            "model_output": parsed,
+            "action_plan": plan.to_dict(),
+            "consistency": consistency,
+            "profile": None,
+            "target": target_payload,
+            "schema_context_used": False,
+            "skill_context_used": False,
+            "draft_only": True,
+            "blocked": False,
+            "deterministic_plan": {"ok": True, "code": "DETERMINISTIC_CREATE_TABLE", "table": table, "columns": cols},
+        }
 
     def _parse_json_object(self, content: Any) -> dict[str, Any]:
         if isinstance(content, dict):
@@ -435,6 +534,10 @@ class TextToSqlSkill:
                 "draft_only": True,
                 "blocked": False,
             }
+
+        deterministic_create = self._maybe_deterministic_create_table(request, target_payload)
+        if deterministic_create is not None:
+            return deterministic_create
 
         profile = self._profile(model_profile_id)
         if profile is None:

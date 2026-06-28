@@ -57,6 +57,7 @@ class ModelProviderProfile:
     is_active: bool = False
     capabilities: dict[str, Any] = field(default_factory=dict)
     context_window: int | None = None
+    request_timeout_seconds: int = 180
     created_at: str = field(default_factory=now_iso)
     updated_at: str = field(default_factory=now_iso)
 
@@ -77,6 +78,7 @@ class ModelProviderProfile:
             is_active=bool(data.get("is_active", data.get("active", False))),
             capabilities=dict(data.get("capabilities") or {"chat": True, "tool_calling": "optional_or_detected", "json_mode": "optional_or_detected"}),
             context_window=data.get("context_window"),
+            request_timeout_seconds=180,
             created_at=data.get("created_at") or now_iso(),
             updated_at=now_iso() if for_write else data.get("updated_at") or now_iso(),
         )
@@ -111,6 +113,7 @@ class ModelProviderProfile:
             "is_active": self.is_active,
             "capabilities": self.capabilities,
             "context_window": self.context_window,
+            "request_timeout_seconds": self.request_timeout_seconds,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }

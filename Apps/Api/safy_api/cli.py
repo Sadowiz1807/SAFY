@@ -14,6 +14,8 @@ from pathlib import Path
 
 import uvicorn
 
+from Core.version import SAFY_VERSION
+
 
 def get_repo_root() -> Path:
     env_root = os.environ.get("SAFY_HOME")
@@ -107,7 +109,7 @@ def main() -> None:
             app_dir=str(root),
         )
     elif args.command == "info":
-        print("SAFY Version: 1.1.0")
+        print(f"SAFY Version: {SAFY_VERSION}")
         print(f"Home: {root}")
         print("Dashboard: http://127.0.0.1:8000/")
     elif args.command == "domain":

@@ -12,7 +12,7 @@ if (-not $scriptDir) {
 }
 
 Write-Host "SAFY editable install complete."
-Write-Host "If 'safy' is not recognized from C:\Users\ASUS, add this directory to PATH:"
+Write-Host "If 'safy' is not recognized in a new terminal, add this directory to PATH:"
 Write-Host "  $scriptDir"
 Write-Host "Current-session PATH command:"
 Write-Host "  `$env:Path = '$scriptDir;' + `$env:Path"

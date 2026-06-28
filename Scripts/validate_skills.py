@@ -58,6 +58,8 @@ def main() -> int:
         errors.append(f"invalid skill {name}: {reason}")
 
     for path in skills_root.rglob("*"):
+        if "__pycache__" in path.parts or any(part.startswith(".") for part in path.relative_to(skills_root).parts):
+            continue
         if not path.is_file():
             continue
         relative = path.relative_to(skills_root)

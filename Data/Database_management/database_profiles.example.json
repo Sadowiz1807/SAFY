@@ -24,7 +24,8 @@
       "read_only": true,
       "real_db_readonly": true,
       "user_query_access_mode": "credential_permissions",
-      "active": false
+      "active": false,
+      "sql_rpc_argument": "sql"
     }
   ]
 }

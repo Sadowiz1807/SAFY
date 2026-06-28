@@ -193,7 +193,11 @@ def discover_skills(
     if not root.is_dir():
         return descriptors, {str(root): "SKILLS_ROOT_MISSING"}
 
-    for child in sorted(path for path in root.iterdir() if path.is_dir()):
+    for child in sorted(
+        path
+        for path in root.iterdir()
+        if path.is_dir() and path.name != "__pycache__" and not path.name.startswith(".")
+    ):
         canonical = child / "SKILL.md"
         legacy = child / "skill.md"
         if not canonical.is_file() and not (

@@ -1,6 +1,6 @@
 [project]
 name = "safy"
-version = "1.1.0"
+version = "1.2.0"
 description = "SAFY: Local AI Database Agent and Database Safety Gateway"
 requires-python = ">=3.10"
 dependencies = [
@@ -8,6 +8,8 @@ dependencies = [
     "uvicorn",
     "pydantic",
     "pyyaml",
+    "pypdf",
+    "python-docx",
 ]
 
 [project.scripts]
@@ -26,7 +28,6 @@ include = [
     "Gateway*",
     "LLM*",
     "Logging*",
-    "Providers*",
     "Sandbox*",
     "State*",
     "Skills*",
@@ -64,3 +65,8 @@ build-backend = "setuptools.build_meta"
     "packs/*/*/*.safy-domain",
     "reports/*.json",
 ]
+
+
+[project.optional-dependencies]
+dev = ["pytest"]
+db = ["pymysql", "psycopg[binary]", "pyodbc", "oracledb"]

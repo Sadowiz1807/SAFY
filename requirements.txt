@@ -3,3 +3,5 @@ uvicorn
 pydantic
 PyYAML
 pytest
+pypdf
+python-docx

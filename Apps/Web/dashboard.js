@@ -1,5 +1,7 @@
 const SAFY_API_BASE = window.SAFY_API_BASE || '';
 let safyCurrentCheck = null;
+let safySafetyBinding = null;
+let safySafetyBindingExpiryTimer = null;
 let safyChatId = null;
 let safyModelProfile = null;
 let safyDatabaseProfile = null;
@@ -19,8 +21,10 @@ let safyUiSettings = { ...SAFY_DEFAULT_UI_SETTINGS };
 let safySlashCommandIndex = 0;
 let safyContextSources = [];
 let safyChatRequestPending = false;
+let safySandboxRules = [];
+let safySelectedSandboxRuleId = null;
 const SAFY_CONTEXT_MAX_SOURCES = 5;
-const SAFY_CONTEXT_MAX_FILE_BYTES = 1024 * 1024;
+const SAFY_CONTEXT_MAX_FILE_BYTES = 50 * 1024 * 1024;
 const SAFY_SIDEBAR_STATE_KEY = 'safy_sidebar_state_v1';
 
 const SAFY_CHAT_COMMANDS = [
@@ -69,6 +73,9 @@ function friendlyErrorMessage(code, message) {
   }
   if (/QUERY_CHECK_PROFILE_MISMATCH|PROFILE_MISMATCH|QUERY_CHECK_TARGET_MISMATCH|TARGET_MISMATCH/i.test(codeText)) {
     return 'The selected database target no longer matches the safety check. Select the intended database and check again.';
+  }
+  if (/QUERY_SQL_HASH_MISMATCH|SQL_HASH_MISMATCH/i.test(codeText)) {
+    return 'The SQL changed after Check Safety. Run Check Safety again before Execute.';
   }
   if (/QUERY_CHECK_DRIVER_MISMATCH|QUERY_CHECK_DIALECT_MISMATCH|DIALECT_MISMATCH/i.test(codeText)) {
     return 'The database driver or SQL dialect changed after Check Safety. Regenerate and check the SQL again.';
@@ -184,9 +191,11 @@ function executionModeLabel(data = {}) {
 }
 
 async function apiRequest(path, options = {}) {
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  const headers = isFormData ? { ...(options.headers || {}) } : { 'Content-Type': 'application/json', ...(options.headers || {}) };
   const response = await fetch(`${SAFY_API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-    ...options
+    ...options,
+    headers
   });
 
   const body = await response.json().catch(() => null);
@@ -387,6 +396,19 @@ function summarizeModel(profile) {
   return `${profile.display_name || profile.provider || 'Model'} / ${profile.model_name || profile.model || profile.profile_id}`;
 }
 
+function databaseDisplayName(profile) {
+  return (
+    profile?.connection_name ||
+    profile?.display_name ||
+    profile?.profile_name ||
+    profile?.name ||
+    profile?.profile_id ||
+    profile?.database_type ||
+    profile?.driver ||
+    'Database'
+  );
+}
+
 function summarizeDatabase(profile) {
   if (!profile) return 'Database: Not connected';
   return parseDatabaseMode(profile).summary;
@@ -426,6 +448,7 @@ async function loadProfiles() {
     syncDatabaseFields();
     renderDatabaseSwitchOptions();
     await updateSchemaLaunchHint();
+    await loadSandboxRulesStatus();
   } catch (error) {
     setConnectionStatus('model', 'error', 'Profile API unavailable');
     setConnectionStatus('database', 'error', 'Profile API unavailable');
@@ -437,7 +460,165 @@ async function ensureActiveSandbox() {
   if (!safyDatabaseProfile?.profile_id) return null;
   const ensured = await apiRequest(`/database-profiles/${safyDatabaseProfile.profile_id}/ensure-sandbox`, { method: 'POST' });
   safySandboxId = ensured?.sandbox?.id || null;
+  await loadSandboxRulesStatus();
   return ensured?.sandbox || null;
+}
+
+function sandboxScope() {
+  const databaseProfileId = safyDatabaseProfile?.profile_id || 'db_default';
+  const sandboxId = safySandboxId || `db_${databaseProfileId}`;
+  return { databaseProfileId, sandboxId };
+}
+
+async function loadSandboxRulesStatus() {
+  const line = document.getElementById('sandbox-status-line');
+  if (!safyDatabaseProfile?.profile_id) {
+    if (line) line.textContent = 'Sandbox: Not configured';
+    return;
+  }
+  try {
+    const { databaseProfileId, sandboxId } = sandboxScope();
+    const status = await apiRequest(`/sandbox/status?database_profile_id=${encodeURIComponent(databaseProfileId)}&sandbox_id=${encodeURIComponent(sandboxId)}`);
+    if (line) line.textContent = status.summary || `Sandbox: ${status.status || 'Unknown'}`;
+    await loadSandboxRules();
+  } catch (error) {
+    if (line) line.textContent = 'Sandbox: Unknown';
+  }
+}
+
+async function loadSandboxRules() {
+  if (!safyDatabaseProfile?.profile_id) return;
+  const { databaseProfileId, sandboxId } = sandboxScope();
+  const data = await apiRequest(`/sandbox-rules?database_profile_id=${encodeURIComponent(databaseProfileId)}&sandbox_id=${encodeURIComponent(sandboxId)}`);
+  safySandboxRules = data.rules || [];
+  renderSandboxRules();
+}
+
+function renderSandboxRules() {
+  const list = document.getElementById('sandbox-rules-list');
+  if (!list) return;
+  if (!safySandboxRules.length) {
+    list.innerHTML = '<div class="sandbox-rule-empty">No sandbox rules for this database/sandbox.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  safySandboxRules.forEach(rule => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'sandbox-rule-row';
+    const status = document.createElement('span');
+    status.className = `sandbox-rule-status sandbox-rule-status-${String(rule.status || 'draft').replace(/[^a-z0-9_-]/gi, '_')}`;
+    const dot = document.createElement('span');
+    dot.className = 'sandbox-rule-status-dot';
+    dot.setAttribute('aria-hidden', 'true');
+    const statusText = document.createElement('span');
+    statusText.textContent = rule.status === 'active' ? 'Active' : (rule.status || 'draft');
+    status.appendChild(dot);
+    status.appendChild(statusText);
+    const body = document.createElement('span');
+    body.className = 'sandbox-rule-row-body';
+    const title = document.createElement('span');
+    title.className = 'sandbox-rule-row-title';
+    title.textContent = rule.rule_id || 'rule';
+    const preview = document.createElement('span');
+    preview.className = 'sandbox-rule-row-preview';
+    preview.textContent = (rule.raw_text || '').slice(0, 88) || 'No rule text';
+    body.appendChild(title);
+    body.appendChild(preview);
+    item.appendChild(status);
+    item.appendChild(body);
+    item.addEventListener('click', () => {
+      safySelectedSandboxRuleId = rule.rule_id;
+      const textInput = document.getElementById('sandbox-rule-text');
+      const report = document.getElementById('sandbox-rule-report');
+      if (textInput) textInput.value = rule.raw_text || '';
+      if (report) report.textContent = JSON.stringify(rule.parsed_rules || [], null, 2);
+    });
+    list.appendChild(item);
+  });
+}
+
+async function saveSandboxRuleDraft() {
+  const textInput = document.getElementById('sandbox-rule-text');
+  const reportEl = document.getElementById('sandbox-rule-report');
+  const text = String(textInput?.value || '').trim();
+  if (!text) return showToast('Enter a sandbox rule first.', 'info');
+  const { databaseProfileId, sandboxId } = sandboxScope();
+  const data = await apiRequest('/sandbox-rules/save', {
+    method: 'POST',
+    body: JSON.stringify({
+      database_profile_id: databaseProfileId,
+      sandbox_id: sandboxId,
+      rule_id: safySelectedSandboxRuleId || null,
+      raw_text: text,
+      connection_name: safyDatabaseProfile?.connection_name || safyDatabaseProfile?.profile_name || null
+    })
+  });
+  if (reportEl) reportEl.textContent = JSON.stringify(data.validation_report || {}, null, 2);
+  if (!data.saved) {
+    showToast(data.message || 'Rule was not saved because validation found a conflict.', 'error');
+    await loadSandboxRulesStatus();
+    return;
+  }
+  safySelectedSandboxRuleId = data.rule?.rule_id || null;
+  showToast(data.message || 'Sandbox rule saved and activated.', 'success');
+  await loadSandboxRulesStatus();
+}
+
+async function validateSandboxRule() {
+  if (!safySelectedSandboxRuleId) await saveSandboxRuleDraft();
+  if (!safySelectedSandboxRuleId) return;
+  const { databaseProfileId, sandboxId } = sandboxScope();
+  const data = await apiRequest('/sandbox-rules/validate', { method: 'POST', body: JSON.stringify({ database_profile_id: databaseProfileId, sandbox_id: sandboxId, rule_id: safySelectedSandboxRuleId }) });
+  document.getElementById('sandbox-rule-report').textContent = JSON.stringify(data.validation_report || {}, null, 2);
+  await loadSandboxRulesStatus();
+}
+
+async function activateSandboxRule() {
+  if (!safySelectedSandboxRuleId) await saveSandboxRuleDraft();
+  if (!safySelectedSandboxRuleId) return;
+  const { databaseProfileId, sandboxId } = sandboxScope();
+  const data = await apiRequest('/sandbox-rules/activate', { method: 'POST', body: JSON.stringify({ database_profile_id: databaseProfileId, sandbox_id: sandboxId, rule_id: safySelectedSandboxRuleId }) });
+  document.getElementById('sandbox-rule-report').textContent = JSON.stringify(data.validation_report || {}, null, 2);
+  showToast(data.rule?.status === 'active' ? 'Sandbox rule activated.' : 'Sandbox rule needs user decision.', data.rule?.status === 'active' ? 'success' : 'info');
+  await loadSandboxRulesStatus();
+}
+
+async function disableSandboxRule() {
+  if (!safySelectedSandboxRuleId) return showToast('Select a sandbox rule first.', 'info');
+  const { databaseProfileId, sandboxId } = sandboxScope();
+  await apiRequest('/sandbox-rules/disable', { method: 'POST', body: JSON.stringify({ database_profile_id: databaseProfileId, sandbox_id: sandboxId, rule_id: safySelectedSandboxRuleId }) });
+  await loadSandboxRulesStatus();
+}
+
+async function uploadSandboxRuleFile(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const suffix = String(file.name || '').toLowerCase().split('.').pop();
+  if (!['md', 'txt'].includes(suffix)) {
+    event.target.value = '';
+    return showToast('Sandbox rule files must be .md or .txt.', 'error');
+  }
+  const rawText = await file.text();
+  const textInput = document.getElementById('sandbox-rule-text');
+  if (textInput) textInput.value = rawText;
+  safySelectedSandboxRuleId = null;
+  const report = document.getElementById('sandbox-rule-report');
+  if (report) report.textContent = `Loaded ${file.name}. Click Save to validate and activate.`;
+  showToast(`${file.name} loaded. Click Save to validate and activate.`, 'success');
+  event.target.value = '';
+}
+
+function toggleSandboxRulesPanel() {
+  const panel = document.getElementById('sandbox-rules-panel');
+  const btn = document.getElementById('sandbox-rules-toggle-btn');
+  const open = panel?.classList.contains('hidden');
+  panel?.classList.toggle('hidden', !open);
+  if (btn) {
+    btn.textContent = open ? 'Hide Rules' : 'Show Rules';
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  if (open) loadSandboxRulesStatus();
 }
 
 function applyDatabaseWorkflowResult(data, successMessage) {
@@ -504,8 +685,156 @@ function hideNormalizedError() {
   if (box) box.style.display = 'none';
 }
 
-function resetExecuteContext({ clearSql = false, reason = 'context_changed' } = {}) {
+function setCheckSafetyDisabled(disabled) {
+  const check = document.getElementById('check-query-btn');
+  if (!check) return;
+  if (disabled) {
+    check.setAttribute('disabled', 'disabled');
+    check.classList.add('disabled');
+  } else {
+    check.removeAttribute('disabled');
+    check.classList.remove('disabled');
+  }
+}
+
+function setExecuteDisabled(disabled) {
+  const execute = document.getElementById('execute-query-btn');
+  if (!execute) return;
+  if (disabled) {
+    execute.setAttribute('disabled', 'disabled');
+    execute.classList.add('disabled');
+  } else {
+    execute.removeAttribute('disabled');
+    execute.classList.remove('disabled');
+  }
+}
+
+function currentExecuteSql() {
+  return String(document.getElementById('user-query-input')?.value || '');
+}
+
+function safetyCheckExpired(binding, now = new Date()) {
+  if (!binding?.expires_at) return false;
+  const expiresAt = Date.parse(binding.expires_at);
+  return Number.isFinite(expiresAt) && expiresAt <= now.getTime();
+}
+
+function currentSessionId() {
+  return safyChatId || null;
+}
+
+function profileRealDbMode(profile, target = 'connected_database') {
+  const mode = String(profile?.mode || '').toLowerCase();
+  const accessMode = String(profile?.user_query_access_mode || '').toLowerCase();
+  if (target !== 'connected_database') return false;
+  if (profile?.real_db_mode === true) return true;
+  if (profile?.real_database_mode === true) return true;
+  if (mode === 'real' && accessMode !== 'disabled') return true;
+  return Boolean(profile?.profile_id && profile?.real_db_readonly === true && accessMode !== 'disabled');
+}
+
+function buildSafetyBinding(check = {}, sql = '') {
+  return Object.freeze({
+    sql,
+    chat_id: safyChatId || null,
+    session_id: currentSessionId(),
+    check_id: check.check_id || null,
+    sql_hash: check.sql_hash || null,
+    target: check.target || 'connected_database',
+    database_profile_id: check.database_profile_id || null,
+    sandbox_id: check.sandbox_id || null,
+    driver: check.driver || null,
+    dialect: check.dialect || null,
+    context_generation: check.context_generation ?? null,
+    schema_generation: check.schema_generation ?? null,
+    user_query_access_mode: check.user_query_access_mode || check.permission_mode || 'credential_permissions',
+    expires_at: check.expires_at || null,
+    safety_status: check.safety_status || null,
+    check_passed: check.check_passed === true,
+    allowed_to_attempt: check.allowed_to_attempt === true,
+  });
+}
+
+function safetyBindingMismatchReason(binding, sql = currentExecuteSql()) {
+  if (!binding?.check_id) return 'missing_check_id';
+  if (!binding?.sql_hash) return 'missing_sql_hash';
+  if (binding.check_passed !== true) return 'check_not_passed';
+  if (binding.safety_status !== 'sandbox_passed') return 'sandbox_not_passed';
+  if (binding.allowed_to_attempt !== true) return 'not_allowed';
+  if (safetyCheckExpired(binding)) return 'check_expired';
+  if (String(sql || '').trim() !== String(binding.sql || '').trim()) return 'sql_changed';
+  if (binding.database_profile_id && safyDatabaseProfile?.profile_id && binding.database_profile_id !== safyDatabaseProfile.profile_id) return 'database_profile_changed';
+  if (binding.sandbox_id && safySandboxId && binding.sandbox_id !== safySandboxId) return 'sandbox_changed';
+  if ((binding.chat_id || null) !== (safyChatId || null)) return 'chat_changed';
+  if ((binding.session_id || null) !== (currentSessionId() || null)) return 'session_changed';
+  return '';
+}
+
+function updateExecuteButtonFromSafetyBinding() {
+  setExecuteDisabled(Boolean(safetyBindingMismatchReason(safySafetyBinding)));
+}
+
+function clearSafetyBindingExpiryTimer() {
+  if (safySafetyBindingExpiryTimer) {
+    clearTimeout(safySafetyBindingExpiryTimer);
+    safySafetyBindingExpiryTimer = null;
+  }
+}
+
+function scheduleSafetyBindingExpiry(binding) {
+  clearSafetyBindingExpiryTimer();
+  if (!binding?.expires_at) return;
+  const delay = Date.parse(binding.expires_at) - Date.now();
+  if (!Number.isFinite(delay)) return;
+  if (delay <= 0) {
+    invalidateSafetyCheck('check_expired');
+    return;
+  }
+  safySafetyBindingExpiryTimer = setTimeout(() => {
+    if (safySafetyBinding?.check_id === binding.check_id) invalidateSafetyCheck('check_expired');
+  }, Math.min(delay, 2147483647));
+}
+
+function invalidateSafetyCheck(reason = 'context_changed', { clearSql = false } = {}) {
+  clearSafetyBindingExpiryTimer();
   safyCurrentCheck = null;
+  safySafetyBinding = null;
+  if (clearSql) {
+    const input = document.getElementById('user-query-input');
+    if (input) input.value = '';
+  }
+  const checkStatus = document.getElementById('execute-check-status');
+  if (checkStatus) checkStatus.textContent = reason === 'check_expired' ? 'expired' : (reason === 'sql_changed' ? 'stale' : 'not checked');
+  const marker = document.getElementById('execute-context-reset-reason');
+  if (marker) marker.textContent = reason;
+  setExecuteDisabled(true);
+}
+
+function executePayloadFromSafetyBinding(binding, sql = currentExecuteSql(), userDecision = 'yes') {
+  const reason = safetyBindingMismatchReason(binding, sql);
+  if (reason) return null;
+  return {
+    sql,
+    check_id: binding.check_id,
+    sql_hash: binding.sql_hash,
+    chat_id: binding.chat_id || null,
+    session_id: binding.session_id || null,
+    target: binding.target || 'connected_database',
+    sandbox_id: binding.sandbox_id || null,
+    database_profile_id: binding.database_profile_id || null,
+    driver: binding.driver || null,
+    dialect: binding.dialect || null,
+    context_generation: binding.context_generation ?? null,
+    schema_generation: binding.schema_generation ?? null,
+    user_query_access_mode: binding.user_query_access_mode || 'credential_permissions',
+    user_decision: userDecision,
+    confirmation_code: document.getElementById('confirmation-code-input')?.value || null,
+    real_db_mode: profileRealDbMode(safyDatabaseProfile, binding.target || 'connected_database')
+  };
+}
+
+function resetExecuteContext({ clearSql = false, reason = 'context_changed' } = {}) {
+  invalidateSafetyCheck(reason, { clearSql });
   if (clearSql) {
     const input = document.getElementById('user-query-input');
     if (input) input.value = '';
@@ -520,6 +849,7 @@ function resetExecuteContext({ clearSql = false, reason = 'context_changed' } = 
   if (target) target.textContent = 'none';
   if (rows) rows.textContent = '0';
   if (summary) summary.textContent = 'Review generated SQL, run Check Safety, then Execute if needed.';
+  setCheckSafetyDisabled(true);
   const execute = document.getElementById('execute-query-btn');
   execute?.setAttribute('disabled', 'disabled');
   execute?.classList.add('disabled');
@@ -538,7 +868,7 @@ function parseDatabaseMode(profile) {
 
   const mode = String(profile.mode || (profile.real_db_readonly ? 'real' : 'not_connected')).toLowerCase();
   const connectionStatus = String(profile.connection_status || profile.status || 'unknown').toLowerCase();
-  const displayName = profile.display_name || profile.profile_id || 'Database';
+  const displayName = databaseDisplayName(profile);
 
   if (mode === 'real' && connectionStatus === 'failed') {
     return { label: 'Database: Real connection failed', summary: `${displayName} · Real connection failed`, status: 'error' };
@@ -560,8 +890,8 @@ function formatAgentReply(reply) {
   }
   const lines = [];
   if (reply?.answer) lines.push(String(reply.answer));
-  if (reply?.generated_sql) {
-    lines.push('', 'Generated SQL:', reply.generated_sql);
+  if (reply?.generated_sql || reply?.execute_box?.sql) {
+    lines.push('', 'Generated SQL is available in the SQL artifact card and Execute Box.');
   }
   if (reply?.check?.decision || reply?.safety?.workflow) {
     lines.push('', `Safety: ${reply.check?.decision || reply.safety?.workflow}`);
@@ -570,6 +900,89 @@ function formatAgentReply(reply) {
     lines.push('', `Execute: ${reply.execute.summary || reply.execute.status}`);
   }
   return redactForDisplay(lines.join('\n') || 'Safy backend returned an empty agent response.');
+}
+
+
+function generatedSqlFromReply(reply = {}) {
+  return String(reply.generated_sql || reply.execute_box?.sql || reply.sql || '').trim();
+}
+
+function statementCountFromSql(sql = '') {
+  let count = 0;
+  let token = '';
+  let quote = '';
+  const text = String(sql || '');
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    token += char;
+    if (quote) {
+      if (char === quote && text[index + 1] === quote) { index += 1; token += text[index]; continue; }
+      if (char === quote) quote = '';
+      continue;
+    }
+    if (char === "'" || char === '"') { quote = char; continue; }
+    if (char === ';') {
+      if (token.replace(';', '').trim()) count += 1;
+      token = '';
+    }
+  }
+  if (token.trim()) count += 1;
+  return count;
+}
+
+function sqlCopyIconSvg() {
+  return `
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <path fill="currentColor" d="M16 1H4a2 2 0 0 0-2 2v12h2V3h12V1Zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Zm0 16H8V7h11v14Z"/>
+    </svg>`;
+}
+
+function buildSqlArtifactCard(reply = {}) {
+  const sql = generatedSqlFromReply(reply);
+  if (!sql) return null;
+  const card = makeElement('section', 'sql-artifact-card');
+  const header = makeElement('div', 'sql-artifact-header');
+  const titleWrap = makeElement('div', 'sql-artifact-title-wrap');
+  const title = makeElement('div', 'sql-artifact-title', 'Generated SQL');
+  const meta = makeElement('div', 'sql-artifact-meta');
+  const dialect = reply.domain_schema?.dialect || reply.execute_box?.dialect || reply.dialect || safyDatabaseProfile?.dialect || 'sql';
+  const targets = reply.domain_schema?.target_count || reply.execute_box?.target_count || reply.domain_schema?.details?.target_count || '';
+  const statementCount = reply.statement_count || reply.execute_box?.statement_count || reply.domain_schema?.statement_count || statementCountFromSql(sql);
+  meta.textContent = `${dialect} · ${statementCount} statements${targets ? ` · ${targets} targets` : ''}`;
+  titleWrap.append(title, meta);
+  header.append(titleWrap);
+  const narrative = makeElement('p', 'sql-artifact-narrative', redactForDisplay(reply.answer || reply.execute_box?.summary || 'Review this SQL draft in the Execute Box before running Check Safety.'));
+  const codeWrap = makeElement('div', 'sql-artifact-code-wrap');
+  const copy = makeElement('button', 'sql-code-copy-icon');
+  copy.type = 'button';
+  copy.innerHTML = sqlCopyIconSvg();
+  copy.setAttribute('aria-label', 'Copy SQL');
+  copy.title = 'Copy SQL';
+  copy.addEventListener('click', async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard_unavailable');
+      await navigator.clipboard.writeText(sql);
+      showToast('SQL copied.', 'success');
+    } catch {
+      showToast('Clipboard is unavailable. Select and copy the SQL manually.', 'error');
+    }
+  });
+  const pre = makeElement('pre', 'sql-artifact-code');
+  const code = document.createElement('code');
+  code.textContent = sql;
+  pre.appendChild(code);
+  codeWrap.append(copy, pre);
+  card.append(header, narrative, codeWrap);
+  return card;
+}
+
+function appendAgentReplyToChat(reply) {
+  const sqlCard = buildSqlArtifactCard(reply);
+  if (sqlCard) {
+    appendChatBubble('assistant', '', { node: sqlCard });
+    return true;
+  }
+  return appendQueryResultToChat(reply);
 }
 
 function queryRowsFromPayload(data = {}) {
@@ -778,9 +1191,14 @@ function appendChatBubble(role, text, options = {}) {
   const timeText = options.timeText || new Date().toLocaleTimeString();
 
   messages.style.display = 'block';
-  messages.insertAdjacentHTML('beforeend', `<div class="message ${cssClass}"><div class="message-avatar ${isUser ? 'user-avatar' : 'agent-avatar'}">${avatar}</div><div class="message-content"><div class="message-bubble"></div><div class="message-meta">${meta} - ${timeText}</div></div></div>`);
-  const messageEl = messages.lastElementChild;
-  const bubble = messageEl.querySelector('.message-bubble');
+  const messageEl = makeElement('div', `message ${cssClass}`);
+  const avatarEl = makeElement('div', `message-avatar ${isUser ? 'user-avatar' : 'agent-avatar'}`, avatar);
+  const contentEl = makeElement('div', 'message-content');
+  const bubble = makeElement('div', 'message-bubble');
+  const metaEl = makeElement('div', 'message-meta', `${meta} - ${timeText}`);
+  contentEl.append(bubble, metaEl);
+  messageEl.append(avatarEl, contentEl);
+  messages.appendChild(messageEl);
   if (options.node) {
     messageEl.classList.add('message-rich');
     bubble.classList.add('message-bubble-rich');
@@ -789,6 +1207,18 @@ function appendChatBubble(role, text, options = {}) {
     streamTextInto(bubble, text);
   } else {
     bubble.textContent = text;
+  }
+  if (isUser && Array.isArray(options.attachments) && options.attachments.length) {
+    const attached = makeElement('div', 'message-attachment-summary');
+    const title = makeElement('div', 'message-attachment-title', 'Attached:');
+    const list = makeElement('ul', 'message-attachment-list');
+    options.attachments.forEach((attachment) => {
+      const item = document.createElement('li');
+      item.textContent = attachment.name || attachment.filename || attachment.file_id || 'context file';
+      list.appendChild(item);
+    });
+    attached.append(title, list);
+    bubble.appendChild(attached);
   }
   messages.scrollTop = messages.scrollHeight;
   return messages;
@@ -962,22 +1392,57 @@ function syncSidebarButtons() {
 function restoreSidebarState() {
   const shell = document.getElementById('app-shell');
   if (!shell) return;
+  if (window.matchMedia('(max-width: 1023px)').matches) {
+    shell.classList.remove('left-collapsed', 'right-collapsed');
+    syncSidebarButtons();
+    return;
+  }
   const state = sidebarState();
   shell.classList.toggle('left-collapsed', Boolean(state.left));
   shell.classList.toggle('right-collapsed', Boolean(state.right));
   syncSidebarButtons();
 }
 
-function toggleLeftSidebar() {
-  document.getElementById('app-shell')?.classList.toggle('left-collapsed');
+function handleResponsiveSidebarModeChange() {
+  const shell = document.getElementById('app-shell');
+  if (!shell) return;
+  if (window.matchMedia('(max-width: 1023px)').matches) {
+    shell.classList.remove('left-collapsed', 'right-collapsed');
+  } else {
+    shell.classList.remove('left-drawer-open', 'right-drawer-open');
+    const state = sidebarState();
+    shell.classList.toggle('left-collapsed', Boolean(state.left));
+    shell.classList.toggle('right-collapsed', Boolean(state.right));
+  }
   syncSidebarButtons();
-  persistSidebarState();
+}
+
+function toggleLeftSidebar() {
+  const shell = document.getElementById('app-shell');
+  if (!shell) return;
+  ensureSidebarBackdrop();
+  if (window.matchMedia('(max-width: 1023px)').matches) {
+    shell.classList.toggle('left-drawer-open');
+    shell.classList.remove('right-drawer-open');
+  } else {
+    shell.classList.toggle('left-collapsed');
+    persistSidebarState();
+  }
+  syncSidebarButtons();
 }
 
 function toggleRightSidebar() {
-  document.getElementById('app-shell')?.classList.toggle('right-collapsed');
+  const shell = document.getElementById('app-shell');
+  if (!shell) return;
+  ensureSidebarBackdrop();
+  if (window.matchMedia('(max-width: 1023px)').matches) {
+    shell.classList.toggle('right-drawer-open');
+    shell.classList.remove('left-drawer-open');
+  } else {
+    shell.classList.toggle('right-collapsed');
+    persistSidebarState();
+  }
   syncSidebarButtons();
-  persistSidebarState();
 }
 
 function contextSourceError(message = '') {
@@ -995,13 +1460,65 @@ function contextInlineError(message = '') {
 }
 
 function contextSourceSize(length) {
-  if (length < 1024) return `${length} B`;
-  return `${Math.ceil(length / 1024)} KiB`;
+  const bytes = Number(length || 0);
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KiB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function removeContextSource(sourceId) {
+async function refreshContextStorageStats() {
+  try {
+    const stats = await apiRequest('/context-files/storage');
+    const summary = document.getElementById('context-storage-summary');
+    const count = document.getElementById('context-storage-count');
+    if (summary) summary.textContent = `Context files: ${contextSourceSize(stats.used_bytes)} / ${contextSourceSize(stats.quota_bytes)}`;
+    if (count) count.textContent = `Files uploaded: ${stats.file_count || 0} · Active: ${stats.active_file_count || 0}`;
+  } catch {
+    const summary = document.getElementById('context-storage-summary');
+    if (summary) summary.textContent = 'Context files: unavailable';
+  }
+}
+
+function previewContextSource(sourceId) {
+  const source = safyContextSources.find((candidate) => candidate.id === sourceId || candidate.file_id === sourceId);
+  if (!source) return;
+  let panel = document.getElementById('context-file-preview-panel');
+  if (!panel) {
+    panel = document.createElement('section');
+    panel.id = 'context-file-preview-panel';
+    panel.className = 'context-file-preview-panel';
+    panel.setAttribute('aria-live', 'polite');
+    (document.querySelector('.chat-composer') || document.querySelector('.composer-shell') || document.querySelector('main') || document.body)?.appendChild(panel);
+  }
+  panel.innerHTML = '';
+  const title = document.createElement('strong');
+  title.textContent = source.name;
+  const meta = document.createElement('span');
+  meta.textContent = `${source.size_bytes ? contextSourceSize(source.size_bytes) : 'unknown'} · ${source.sha256 ? source.sha256.slice(0, 12) : 'stored server-side'} · ${source.status || 'ready'} · ${source.text_char_count || 0} chars · ${source.scope || 'session'}`;
+  const body = document.createElement('pre');
+  body.textContent = source.preview || 'Preview is available from the backend metadata.';
+  panel.append(title, meta, body);
+}
+
+async function removeContextSource(sourceId) {
+  const removed = safyContextSources.find((candidate) => candidate.id === sourceId);
+  if (!removed) return;
   safyContextSources = safyContextSources.filter((candidate) => candidate.id !== sourceId);
   renderContextSources();
+  document.getElementById('context-file-preview-panel')?.remove();
+  if (removed?.file_id && safyChatId) {
+    try {
+      await apiRequest(`/context-files/session/${encodeURIComponent(safyChatId)}/${encodeURIComponent(removed.file_id)}/detach`, { method: 'POST' });
+      showToast(`${removed.name || 'Context file'} removed from this session.`, 'success');
+    } catch (error) {
+      showToast(error?.message || 'Could not detach the context file on the server.', 'error');
+      safyContextSources = safyContextSources.filter((candidate) => candidate.id !== removed.id);
+      safyContextSources.push(removed);
+      renderContextSources();
+    } finally {
+      refreshContextStorageStats();
+    }
+  }
 }
 
 function renderContextSources() {
@@ -1020,27 +1537,38 @@ function renderContextSources() {
   list.replaceChildren();
   safyContextSources.forEach((source) => {
     const chip = document.createElement('div');
-    chip.className = 'context-attachment-chip';
-    chip.title = `${source.kind === 'url' ? 'Public URL' : 'Local file'} · ${contextSourceSize(source.content.length)}`;
+    chip.className = `context-attachment-chip ${source.status || 'ready'}`;
+    const sizeLabel = source.size_bytes ? contextSourceSize(source.size_bytes) : contextSourceSize((source.content || '').length);
+    const charLabel = source.text_char_count ? `${source.text_char_count.toLocaleString()} chars` : '';
+    chip.title = `${source.kind === 'url' ? 'Public URL' : 'Context file'} · ${sizeLabel}${charLabel ? ` · ${charLabel}` : ''} · ${source.status || 'ready'}`;
 
     const icon = document.createElement('span');
     icon.className = 'context-attachment-icon';
-    icon.textContent = source.kind === 'url' ? '↗' : 'TXT';
+    icon.textContent = source.kind === 'url' ? '↗' : (source.status === 'failed' ? '!' : 'FILE');
     icon.setAttribute('aria-hidden', 'true');
 
     const name = document.createElement('span');
     name.className = 'context-attachment-name';
-    name.textContent = source.name;
+    const statusLabel = source.status && source.status !== 'ready' ? ` · ${source.status}` : '';
+    name.textContent = `${source.name}${charLabel ? ` · ${charLabel}` : ''}${statusLabel}`;
+
+    const preview = document.createElement('button');
+    preview.type = 'button';
+    preview.className = 'context-attachment-preview';
+    preview.setAttribute('aria-label', `Preview ${source.name}`);
+    preview.title = `Preview ${source.name}`;
+    preview.textContent = 'Preview';
+    preview.addEventListener('click', () => previewContextSource(source.id));
 
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.className = 'context-attachment-remove';
     remove.setAttribute('aria-label', `Remove ${source.name}`);
     remove.title = `Remove ${source.name}`;
-    remove.textContent = '×';
+    remove.textContent = 'Remove';
     remove.addEventListener('click', () => removeContextSource(source.id));
 
-    chip.append(icon, name, remove);
+    chip.append(icon, name, preview, remove);
     list.appendChild(chip);
   });
 }
@@ -1064,14 +1592,23 @@ function addContextSource(source) {
   if (safyContextSources.length >= SAFY_CONTEXT_MAX_SOURCES) {
     throw new Error(`A maximum of ${SAFY_CONTEXT_MAX_SOURCES} context sources is allowed.`);
   }
+  const fileId = source?.file_id || source?.id;
   const content = String(source?.content || '').trim();
-  if (!content) throw new Error('The selected source contains no readable text.');
+  if (!fileId && !content) throw new Error('The selected source contains no readable text.');
   safyContextSources.push({
-    id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    id: fileId || `${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    file_id: fileId || undefined,
     kind: source.kind === 'url' ? 'url' : 'file',
-    name: String(source.name || source.url || 'context').slice(0, 180),
+    name: String(source.name || source.filename || source.safe_filename || source.url || 'context').slice(0, 180),
     url: source.url ? String(source.url).slice(0, 2048) : undefined,
-    content: content.slice(0, SAFY_CONTEXT_MAX_FILE_BYTES)
+    content: content ? content.slice(0, SAFY_CONTEXT_MAX_FILE_BYTES) : '',
+    size_bytes: source.size_bytes,
+    text_char_count: source.text_char_count,
+    chunk_count: source.chunk_count,
+    sha256: source.sha256,
+    preview: source.preview,
+    scope: source.scope || 'session',
+    status: source.extraction_status === 'partial' ? 'partial' : (fileId ? 'ready' : undefined)
   });
   contextInlineError('');
   renderContextSources();
@@ -1102,7 +1639,7 @@ async function addContextUrl() {
 
 function isReadableContextFile(file) {
   const filename = String(file?.name || '').trim().toLowerCase();
-  return filename.endsWith('.md') || filename.endsWith('.txt');
+  return ['.md', '.txt', '.docx', '.pdf', '.json', '.csv', '.html'].some((ext) => filename.endsWith(ext));
 }
 
 async function addContextFiles(fileList) {
@@ -1115,38 +1652,82 @@ async function addContextFiles(fileList) {
         throw new Error(`A maximum of ${SAFY_CONTEXT_MAX_SOURCES} context sources is allowed.`);
       }
       if (!isReadableContextFile(file)) {
-        throw new Error(`${file.name}: only .md and .txt files are supported.`);
+        throw new Error(`${file.name}: supported files are .txt, .md, .docx, text-based .pdf, .json, .csv, and .html.`);
       }
       if (file.size > SAFY_CONTEXT_MAX_FILE_BYTES) {
-        throw new Error(`${file.name}: file exceeds 1 MiB.`);
+        throw new Error(`${file.name}: file exceeds 50 MB.`);
       }
-      addContextSource({ kind: 'file', name: file.name, content: await file.text() });
+      const placeholder = {
+        id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
+        kind: 'file',
+        name: file.name,
+        size_bytes: file.size,
+        content: '',
+        status: 'uploading'
+      };
+      safyContextSources.push(placeholder);
+      renderContextSources();
+
+      const uploadHeaders = { 'Content-Type': file.type || 'application/octet-stream', 'X-File-Name': file.name };
+      if (safyChatId) uploadHeaders['X-Chat-Id'] = safyChatId;
+      if (safyDatabaseProfile?.profile_id) uploadHeaders['X-Database-Profile-Id'] = safyDatabaseProfile.profile_id;
+      if (safySandboxId) uploadHeaders['X-Sandbox-Id'] = safySandboxId;
+      uploadHeaders['X-Context-Scope'] = 'session';
+      if (safyUserProfile?.username || safyRuntimeUsername) uploadHeaders['X-Uploaded-By'] = safyUserProfile?.username || safyRuntimeUsername;
+      const data = await apiRequest('/context-files/upload', { method: 'POST', body: await file.arrayBuffer(), headers: uploadHeaders });
+      Object.assign(placeholder, {
+        id: data.file_id,
+        file_id: data.file_id,
+        name: data.filename || file.name,
+        safe_filename: data.safe_filename,
+        size_bytes: data.size_bytes,
+        text_char_count: data.text_char_count,
+        chunk_count: data.chunk_count,
+        sha256: data.sha256,
+        preview: data.preview,
+        scope: data.scope || 'session',
+        status: data.extraction_status === 'partial' ? 'partial' : 'ready'
+      });
       attached += 1;
+      renderContextSources();
+      refreshContextStorageStats();
     } catch (error) {
-      errors.push(error.message || 'Could not read a selected file.');
+      errors.push(error.message || 'Could not upload a selected file.');
+      safyContextSources = safyContextSources.filter((source) => source.status !== 'uploading');
+      renderContextSources();
     }
   }
   const input = document.getElementById('context-file-input');
   if (input) input.value = '';
   if (errors.length) contextInlineError(errors[0]);
-  if (attached) showToast(`${attached} file${attached === 1 ? '' : 's'} attached for the next message.`, 'success');
+  if (attached) showToast(`${attached} file${attached === 1 ? '' : 's'} uploaded and attached for the next message.`, 'success');
 }
 
 function clearContextSources() {
   safyContextSources = [];
   contextSourceError('');
   contextInlineError('');
+  document.getElementById('context-file-preview-panel')?.remove();
   renderContextSources();
 }
 
 function contextSourcesForRequest() {
-  return safyContextSources.map(({ kind, name, url, content }) => ({ kind, name, url, content }));
+  return safyContextSources
+    .filter(({ kind }) => kind === 'url')
+    .map(({ kind, name, url, content }) => ({ kind, name, url, content }));
+}
+
+function contextFileIdsForRequest() {
+  return safyContextSources
+    .filter(({ kind, file_id, status }) => kind === 'file' && file_id && status !== 'failed')
+    .map(({ file_id }) => file_id);
 }
 
 async function initSafyDashboard() {
   if (!await loadDashboardUserProfile()) return;
   restoreSidebarState();
   initSafyUI();
+  refreshContextStorageStats();
 }
 
 function openModelConfig() {
@@ -1540,6 +2121,7 @@ function buildDatabaseBaseUrl(type, fields) {
 }
 
 function resetChatDraft() {
+  updateResolvedDomainUi(null);
   safyChatId = null;
   resetExecuteContext({ clearSql: true, reason: 'new_chat' });
   hideNormalizedError();
@@ -1550,6 +2132,7 @@ function resetChatDraft() {
     messages.style.display = 'none';
     messages.innerHTML = '';
   }
+  clearContextSources();
   document.querySelectorAll('.session-item.active').forEach((item) => item.classList.remove('active'));
   updateActiveCommandVisual();
 }
@@ -1593,7 +2176,7 @@ function isReadOnlyDatabaseRequest(text) {
 
 function databaseCommandGuardMessage() {
   if (safyDatabaseProfile?.connection_status === 'connected' || safyDatabaseProfile?.profile_id) {
-    return 'Database đã kết nối. Lệnh đọc dữ liệu như SELECT/show/xem bảng sẽ chạy trực tiếp ở chế độ read-only. Thao tác ghi/DDL vẫn cần /Execute + Check Safety.';
+    return 'Database đã kết nối. Lệnh đọc dữ liệu như SELECT/show/xem bảng sẽ chạy trực tiếp ở chế độ read-only. Thao tác ghi/DDL sẽ tạo SQL draft, cần Check Safety rồi bạn bấm Execute để chạy real database.';
   }
   return 'Để thao tác database, hãy kết nối database trước rồi dùng /Execute. Chat thường không thực thi hoặc chuẩn bị tác vụ database.';
 }
@@ -1889,7 +2472,7 @@ function databaseFormBody() {
     trust_server_certificate: Boolean(document.getElementById('db-trust-server-certificate')?.checked),
     odbc_driver: (document.getElementById('db-odbc-driver')?.value || '').trim(),
     sql_rpc_function: (document.getElementById('db-rpc-function')?.value || 'safy_execute_sql').trim(),
-    sql_rpc_argument: 'sql_text',
+    sql_rpc_argument: 'sql',
     timeout_seconds: Number(document.getElementById('db-timeout')?.value || 15),
     user_query_access_mode: 'credential_permissions',
     read_only: true,
@@ -2035,9 +2618,17 @@ function renderHistoryMessage(message) {
   const isUser = message.role === 'user';
   const metadata = safeParseSessionMetadata(message.metadata);
   const created = message.created_at ? new Date(message.created_at).toLocaleTimeString() : new Date().toLocaleTimeString();
-  if (!isUser && hasStructuredQueryResult(metadata)) {
-    appendChatBubble('assistant', '', { node: buildQueryResultCard(metadata), timeText: created });
-    return;
+  if (!isUser) {
+    const sqlCard = buildSqlArtifactCard(metadata);
+    if (sqlCard) {
+      appendChatBubble('assistant', '', { node: sqlCard, timeText: created });
+      updateResolvedDomainUi(metadata.domain_schema?.resolution || metadata.agent_state?.filled_slots || metadata);
+      return;
+    }
+    if (hasStructuredQueryResult(metadata)) {
+      appendChatBubble('assistant', '', { node: buildQueryResultCard(metadata), timeText: created });
+      return;
+    }
   }
   const bubbleContent = isUser
     ? (message.content_redacted || '')
@@ -2062,7 +2653,36 @@ function restoreExecuteBoxFromHistory(history = []) {
   }
 }
 
+async function restoreContextFilesForSession(chatId) {
+  document.getElementById('context-file-preview-panel')?.remove();
+  if (!chatId) {
+    clearContextSources();
+    return;
+  }
+  try {
+    const files = await apiRequest(`/context-files/session/${encodeURIComponent(chatId)}`);
+    safyContextSources = (Array.isArray(files) ? files : []).map((file) => ({
+      id: file.file_id,
+      file_id: file.file_id,
+      kind: 'file',
+      name: file.filename,
+      safe_filename: file.safe_filename,
+      size_bytes: file.size_bytes,
+      text_char_count: file.text_char_count,
+      chunk_count: file.chunk_count,
+      preview: file.preview,
+      sha256: file.sha256,
+      status: file.extraction_status === 'partial' ? 'partial' : (file.error_code ? 'failed' : 'ready'),
+      scope: file.scope || 'session'
+    }));
+    renderContextSources();
+  } catch {
+    clearContextSources();
+  }
+}
+
 async function switchSession(chatId) {
+  updateResolvedDomainUi(null);
   safyChatId = chatId;
   hideNormalizedError();
   resetExecuteContext({ clearSql: true, reason: 'session_switch' });
@@ -2074,6 +2694,7 @@ async function switchSession(chatId) {
     messages.innerHTML = '<div class="loading-history" style="padding: 20px; color: var(--text-dim);">Loading history...</div>';
   }
   try {
+    await restoreContextFilesForSession(chatId);
     const history = await apiRequest(`/sessions/${chatId}/messages`);
     if (messages) {
       messages.innerHTML = '';
@@ -2119,6 +2740,7 @@ async function sendChatMessage() {
   if (!rawText) return;
 
   const command = parseSafyChatCommand(rawText);
+  const naturalDbRequest = !command.hasSlashCommand && isDatabaseOperationRequest(rawText);
   const readOnlyDbRequest = safyUiSettings.autoReadOnly !== false && !command.hasSlashCommand && isReadOnlyDatabaseRequest(rawText);
   if (command.isExecute && !command.message) {
     appendChatBubble('user', rawText);
@@ -2191,32 +2813,32 @@ async function sendChatMessage() {
     }
   }
 
-  appendChatBubble('user', rawText);
+  appendChatBubble('user', rawText, { attachments: safyContextSources.filter((source) => source.kind === 'file' && source.file_id) });
   input.value = '';
   hideSlashCommandMenu();
 
   setChatRequestPending(true);
   const loadingIndicator = appendChatLoadingIndicator();
   try {
-    const activeModelProfile = await getActiveModelProfileForChat();
+    const activeModelProfile = await getActiveModelProfileForChat().catch(() => null);
     const modelProfileId = activeModelProfile?.profile_id;
-    if (!modelProfileId) {
-      throw normalizedError({ code: 'MODEL_PROFILE_NOT_ACTIVATED', message: 'MODEL_PROFILE_NOT_ACTIVATED' }, 'MODEL_PROFILE_NOT_ACTIVATED');
-    }
 
     const activeDatabaseProfile = await getActiveDatabaseProfileForChat().catch(() => null);
-    const shouldUseDatabaseRuntime = command.isExecute || readOnlyDbRequest;
-    if (command.isExecute && !activeDatabaseProfile?.profile_id) {
+    const shouldUseDatabaseRuntime = command.isExecute || naturalDbRequest || readOnlyDbRequest;
+    if (shouldUseDatabaseRuntime && !activeDatabaseProfile?.profile_id) {
       appendChatBubble('assistant', 'Chưa có database thật đang active. Hãy Save/Test database trước rồi chạy lại.');
       return;
     }
 
-    const chatPayload = {
+    // Keep original message with /execute prefix intact for backend parsing
+    const originalMessageForBackend = command.isExecute ? rawText : rawText;
+    const basePayload = {
       chat_id: safyChatId,
-      message: command.isExecute ? command.message : rawText,
+      message: originalMessageForBackend,
+      context_file_ids: contextFileIdsForRequest(),
       model_profile_id: modelProfileId,
       options: {
-        command: command.isExecute ? 'execute' : 'chat',
+        command: (command.isExecute || naturalDbRequest) ? 'execute' : 'chat',
         read_only_direct: readOnlyDbRequest,
         active_database_profile_id: activeDatabaseProfile?.profile_id || undefined,
         streaming: Boolean(safyUiSettings.streaming),
@@ -2225,17 +2847,17 @@ async function sendChatMessage() {
       }
     };
     if (activeDatabaseProfile?.profile_id) {
-      chatPayload.database_profile_id = activeDatabaseProfile.profile_id;
+      basePayload.database_profile_id = activeDatabaseProfile.profile_id;
     }
     if (shouldUseDatabaseRuntime && activeDatabaseProfile?.profile_id) {
-      chatPayload.target = 'connected_database';
-      chatPayload.auto_execute = readOnlyDbRequest;
+      basePayload.target = 'connected_database';
+      basePayload.auto_execute = readOnlyDbRequest;
     }
 
     const response = await fetch(`${SAFY_API_BASE}/agent/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(chatPayload)
+      body: JSON.stringify(basePayload)
     });
 
     const body = await response.json().catch(() => null);
@@ -2258,13 +2880,19 @@ async function sendChatMessage() {
     }
 
     const reply = body.data;
+    updateResolvedDomainUi(reply?.domain_schema?.resolution || reply?.agent_state?.filled_slots || reply);
     if (isDirectReadReply(reply)) {
       resetExecuteRuntimePanel({ clearSql: true });
     }
-    if (!appendQueryResultToChat(reply)) {
+    if (!appendAgentReplyToChat(reply)) {
       appendChatBubble('assistant', formatAgentReply(reply), { stream: safyUiSettings.streaming });
     }
-    if (command.isExecute && !isDirectReadReply(reply)) updateExecuteBoxFromAgent(reply);
+    if (!isDirectReadReply(reply) && (command.isExecute || reply?.execute_box)) {
+      if (reply?.execute_box?.draft_ready === false) {
+        resetExecuteContext({ clearSql: true, reason: 'agent_draft_not_available' });
+      }
+      updateExecuteBoxFromAgent(reply);
+    }
     if (safyContextSources.length) clearContextSources();
     await loadSessions();
   } catch (error) {
@@ -2293,7 +2921,8 @@ function renderSafetyReport(data) {
 }
 
 function updateExecuteBoxFromAgent(reply = {}) {
-  const sql = reply.generated_sql || reply.sql || reply.query || reply.sql_preview || '';
+  const executeBox = reply.execute_box || {};
+  const sql = reply.generated_sql || executeBox.sql || reply.sql || reply.query || reply.sql_preview || '';
   const hasStructuredExecutePayload = Boolean(
     sql ||
     reply.check_id ||
@@ -2303,7 +2932,8 @@ function updateExecuteBoxFromAgent(reply = {}) {
     reply.execution_result ||
     reply.safety_status ||
     reply.decision ||
-    reply.target
+    reply.target ||
+    executeBox.draft_ready === false
   );
   if (!hasStructuredExecutePayload) return;
 
@@ -2311,11 +2941,52 @@ function updateExecuteBoxFromAgent(reply = {}) {
     resetExecuteRuntimePanel();
     const input = document.getElementById('user-query-input');
     if (input) input.value = redactForDisplay(sql);
+    setCheckSafetyDisabled(false);
   }
   const summary = document.getElementById('execution-summary');
-  if (summary) summary.textContent = redactForDisplay(reply.summary || reply.message || 'Assistant response received. Review generated SQL before execution.');
+  if (summary) summary.textContent = redactForDisplay(executeBox.summary || reply.summary || reply.message || reply.answer || 'Assistant response received. Review generated SQL before execution.');
 }
 
+
+
+function updateResolvedDomainUi(domainResolution = null) {
+  const el = document.getElementById('active-domain-label') || document.querySelector('[data-active-domain-label]');
+  const source = domainResolution || {};
+  const domainId = source.domain_id || source.selected_domain_id || source.domain || source.filled_slots?.domain_id || null;
+  const label = domainId ? `Domain: ${String(domainId)}` : 'Domain: Chưa xác định';
+
+  if (el) {
+    el.textContent = label;
+    return label;
+  }
+
+  // Backward-compatible fallback for older dashboard.html that had no active-domain-label.
+  const hintBar = document.getElementById('domain-hint-bar');
+  if (hintBar) {
+    const textTarget = Array.from(hintBar.children).find((child) => !child.classList.contains('domain-hint-icon'));
+    if (textTarget) textTarget.textContent = `${label} · Agent path is read-only`;
+  }
+  return label;
+}
+
+function closeMobileDrawers() {
+  const shell = document.getElementById('app-shell');
+  shell?.classList.remove('left-drawer-open', 'right-drawer-open');
+  syncSidebarButtons();
+}
+
+function ensureSidebarBackdrop() {
+  let backdrop = document.getElementById('sidebar-drawer-backdrop');
+  if (!backdrop) {
+    backdrop = makeElement('button', 'sidebar-drawer-backdrop');
+    backdrop.id = 'sidebar-drawer-backdrop';
+    backdrop.type = 'button';
+    backdrop.setAttribute('aria-label', 'Close sidebar drawers');
+    backdrop.addEventListener('click', closeMobileDrawers);
+    document.getElementById('app-shell')?.appendChild(backdrop);
+  }
+  return backdrop;
+}
 
 function currentQueryTarget() {
   return 'connected_database';
@@ -2329,7 +3000,12 @@ async function loadSandboxes() {
     const sandboxes = await apiRequest('/sandboxes');
     if (select) {
       select.innerHTML = '<option value="">Default sandbox</option>';
-      sandboxes.forEach((box) => select.insertAdjacentHTML('beforeend', `<option value="${box.id}">${box.name || box.id} - ${box.status}</option>`));
+      sandboxes.forEach((box) => {
+        const option = document.createElement('option');
+        option.value = String(box.id || '');
+        option.textContent = `${box.name || box.id} - ${box.status}`;
+        select.appendChild(option);
+      });
     }
     if (list) {
       list.textContent = sandboxes.length ? sandboxes.map((box) => `${box.id} | ${box.engine} | ${box.status} | read_only=${box.read_only}`).join('\n') : 'No sandboxes yet.';
@@ -2389,7 +3065,7 @@ async function checkQuery() {
         sandbox_id: safySandboxId || (safyDatabaseProfile?.profile_id ? `db_${safyDatabaseProfile.profile_id}` : null),
         database_profile_id: safyDatabaseProfile?.profile_id || null,
         user_query_access_mode: safyDatabaseProfile?.user_query_access_mode || document.getElementById('db-user-query-access-mode')?.value || 'credential_permissions',
-        real_db_mode: Boolean(safyDatabaseProfile?.real_db_readonly)
+        real_db_mode: profileRealDbMode(safyDatabaseProfile, currentQueryTarget())
       })
     });
     const normalizedSql = String(safyCurrentCheck?.normalized_sql || '').trim();
@@ -2398,19 +3074,13 @@ async function checkQuery() {
       if (queryInput) queryInput.value = normalizedSql;
       showToast('SQL was adapted to the selected database dialect before safety hashing.', 'info');
     }
+    const checkedSql = queryInput?.value || sql;
+    safySafetyBinding = buildSafetyBinding(safyCurrentCheck, checkedSql);
+    scheduleSafetyBindingExpiry(safySafetyBinding);
     renderSafetyReport(safyCurrentCheck);
-    const execute = document.getElementById('execute-query-btn');
-    const canExecute = Boolean(safyCurrentCheck?.allowed_to_attempt)
-      && safyCurrentCheck?.safety_status !== 'blocked'
-      && !String(safyCurrentCheck?.decision || '').startsWith('BLOCK');
-    if (canExecute) {
-      execute?.removeAttribute('disabled');
-      execute?.classList.remove('disabled');
-    } else {
-      execute?.setAttribute('disabled', 'disabled');
-      execute?.classList.add('disabled');
-    }
+    updateExecuteButtonFromSafetyBinding();
   } catch (error) {
+    invalidateSafetyCheck('check_failed');
     renderNormalizedError(error);
   }
 }
@@ -2438,34 +3108,27 @@ function renderExecutionResult(data) {
 
 async function executeQuery(userDecision = 'yes') {
   hideNormalizedError();
-  if (!safyCurrentCheck) {
+  const sql = currentExecuteSql();
+  const payload = executePayloadFromSafetyBinding(safySafetyBinding, sql, userDecision);
+  if (!payload) {
+    invalidateSafetyCheck(safetyBindingMismatchReason(safySafetyBinding, sql) || 'check_required');
     renderNormalizedError({ code: 'QUERY_CHECK_REQUIRED', message: 'Run safety check before execute.', details: {} });
     return;
   }
+  const executedSql = payload.sql;
+  invalidateSafetyCheck('execute_submitted');
   try {
     const data = await apiRequest('/query/execute', {
       method: 'POST',
-      body: JSON.stringify({
-        check_id: safyCurrentCheck.check_id,
-        sql_hash: safyCurrentCheck.sql_hash,
-        chat_id: safyChatId || null,
-        session_id: safyChatId || null,
-        target: safyCurrentCheck.target || 'connected_database',
-        sandbox_id: safyCurrentCheck.sandbox_id || null,
-        database_profile_id: safyCurrentCheck.database_profile_id || null,
-        context_generation: safyCurrentCheck.context_generation ?? null,
-        schema_generation: safyCurrentCheck.schema_generation ?? null,
-        driver: safyCurrentCheck.driver || null,
-        dialect: safyCurrentCheck.dialect || null,
-        user_decision: userDecision,
-        confirmation_code: document.getElementById('confirmation-code-input')?.value || null,
-        real_db_mode: Boolean(safyDatabaseProfile?.real_db_readonly)
-      })
+      body: JSON.stringify(payload)
     });
     renderExecutionResult(data);
-    appendQueryResultToChat(data, safyCurrentCheck?.normalized_sql || document.getElementById('user-query-input')?.value || '');
+    appendQueryResultToChat(data, executedSql);
     await loadSessions();
   } catch (error) {
+    if (/QUERY_CHECK_|QUERY_SQL_HASH_MISMATCH|QUERY_CHECK_REQUIRED/i.test(String(error?.code || error?.message || ''))) {
+      invalidateSafetyCheck('execute_binding_rejected');
+    }
     renderNormalizedError(error);
   }
 }
@@ -2505,6 +3168,10 @@ function initSafyUI() {
   document.getElementById('db-type')?.addEventListener('change', () => updateDatabaseFieldVisibility({ resetPort: true }));
   document.getElementById('db-authentication')?.addEventListener('change', () => updateDatabaseFieldVisibility());
   document.getElementById('schema-open-btn')?.addEventListener('click', openSchemaGraphPage);
+  document.getElementById('sandbox-rules-toggle-btn')?.addEventListener('click', toggleSandboxRulesPanel);
+  document.getElementById('sandbox-rule-save-btn')?.addEventListener('click', saveSandboxRuleDraft);
+  document.getElementById('sandbox-rule-disable-btn')?.addEventListener('click', disableSandboxRule);
+  document.getElementById('sandbox-rule-file')?.addEventListener('change', uploadSandboxRuleFile);
   document.getElementById('toggle-left-sidebar-btn')?.addEventListener('click', toggleLeftSidebar);
   document.getElementById('toggle-right-sidebar-btn')?.addEventListener('click', toggleRightSidebar);
   document.getElementById('send-message-btn')?.addEventListener('click', sendChatMessage);
@@ -2526,11 +3193,17 @@ function initSafyUI() {
   document.addEventListener('click', (event) => {
     if (!event.target.closest?.('.chat-input-area')) hideSlashCommandMenu();
   });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeMobileDrawers(); });
+  window.addEventListener('resize', handleResponsiveSidebarModeChange);
+  ensureSidebarBackdrop();
+  setCheckSafetyDisabled(!String(document.getElementById('user-query-input')?.value || '').trim());
   document.getElementById('check-query-btn')?.addEventListener('click', checkQuery);
   document.getElementById('execute-query-btn')?.addEventListener('click', () => executeQuery('yes'));
-  document.getElementById('user-query-input')?.addEventListener('input', () => {
+  document.getElementById('user-query-input')?.addEventListener('input', (event) => {
+    setCheckSafetyDisabled(!String(event.target?.value || '').trim());
     if (!safyCurrentCheck) return;
     resetExecuteContext({ clearSql: false, reason: 'sql_changed' });
+    setCheckSafetyDisabled(!String(event.target?.value || '').trim());
     const status = document.getElementById('execute-check-status');
     if (status) status.textContent = 'SQL changed — check again';
   });
@@ -2567,6 +3240,16 @@ window.executeQuery = executeQuery;
 window.cancelQueryExecution = cancelQueryExecution;
 window.renderSafetyReport = renderSafetyReport;
 window.renderExecutionResult = renderExecutionResult;
+window.buildSafetyBinding = buildSafetyBinding;
+window.safetyBindingMismatchReason = safetyBindingMismatchReason;
+window.executePayloadFromSafetyBinding = executePayloadFromSafetyBinding;
+window.invalidateSafetyCheck = invalidateSafetyCheck;
+window.updateResolvedDomainUi = updateResolvedDomainUi;
+window.scheduleSafetyBindingExpiry = scheduleSafetyBindingExpiry;
+window.profileRealDbMode = profileRealDbMode;
+window.statementCountFromSql = statementCountFromSql;
+window.buildSqlArtifactCard = buildSqlArtifactCard;
+window.appendChatBubble = appendChatBubble;
 window.renderNormalizedError = renderNormalizedError;
 window.setConnectionStatus = setConnectionStatus;
 window.loadProfiles = loadProfiles;
