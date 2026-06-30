@@ -38,6 +38,7 @@ from Core.skill_actions import (
     QueryExplainSkill,
     QueryRepairSkill,
 )
+from Core.sandbox_rule_engine import SandboxRuleEngine
 
 DEFAULT_SYSTEM_PROMPT = """You are Safy, an AI Database Agent.
 Be concise, practical, and safety-first.
@@ -141,6 +142,7 @@ class AgentRuntime:
         self.execute_query_skill = ExecuteQuerySkill(self.query_orchestrator)
         self.query_explain_skill = QueryExplainSkill()
         self.query_repair_skill = QueryRepairSkill()
+        self.sandbox_rule_engine = SandboxRuleEngine()
         self.workflow_engine = WorkflowEngine()
         self.workflow_reviewer = WorkflowReviewCoordinator()
         project_root = Path(__file__).resolve().parents[1]
@@ -1701,6 +1703,104 @@ class AgentRuntime:
         sql = self._extract_sql_candidate(text)
         return {"intent": "database_task" if sql else "chat", "sql": sql, "explanation": text if text else LLM_UNSTRUCTURED_REPLY, "target_hint": None, "requires_confirmation": False}
 
+    def _active_sandbox_rules(self, database_profile_id: str | None, sandbox_id: str | None) -> list[dict[str, Any]]:
+        store = getattr(self.query_orchestrator, "sandbox_rule_store", None)
+        if not store or not database_profile_id or not sandbox_id:
+            return []
+        try:
+            return list((store.list_rules(database_profile_id, sandbox_id) or {}).get("active_rules") or [])
+        except Exception:
+            return []
+
+    def _rule_aware_create_table_sql(self, sql: str, active_rules: list[dict[str, Any]]) -> tuple[str, list[str]]:
+        """Apply safe additive sandbox-rule constraints to generated CREATE TABLE drafts."""
+        if not sql or not active_rules:
+            return sql, []
+        parsed = self.sandbox_rule_engine.sql_checker.parse_create_table(sql)
+        if not parsed or parsed.parse_error:
+            return sql, []
+        required: list[tuple[str, str]] = []
+        require_pk = False
+        forbidden_semantics: set[str] = set()
+        for rule in active_rules:
+            if rule.get("status") != "active":
+                continue
+            for item in rule.get("parsed_rules") or []:
+                typ = self.sandbox_rule_engine._canonical_type(item)
+                if typ == "required_primary_key_on_create_table":
+                    require_pk = True
+                elif typ == "required_column_on_create_table":
+                    semantic = item.get("column_semantic") or self.sandbox_rule_engine.aliases.canonical_column(item.get("column"))
+                    if semantic:
+                        required.append((semantic, self._default_column_for_semantic(semantic)))
+                elif typ == "column_required":
+                    table = self.sandbox_rule_engine.normalizer.normalize_identifier(item.get("table"))
+                    if not table or table == parsed.table:
+                        semantic = item.get("column_semantic") or self.sandbox_rule_engine.aliases.canonical_column(item.get("column"))
+                        required.append((semantic, self._default_column_for_semantic(semantic)))
+                elif typ == "column_forbidden":
+                    table = self.sandbox_rule_engine.normalizer.normalize_identifier(item.get("table"))
+                    if not table or table == parsed.table:
+                        forbidden_semantics.add(item.get("column_semantic") or self.sandbox_rule_engine.aliases.canonical_column(item.get("column")))
+        if forbidden_semantics.intersection(parsed.semantic_columns):
+            return sql, ["SANDBOX_RULE_FORBIDDEN_COLUMN_UNSAFE_TO_AUTOFIX"]
+        additions: list[tuple[str, str]] = []
+        for semantic, column_name in required:
+            if semantic not in parsed.semantic_columns and column_name not in parsed.columns:
+                additions.append((semantic, column_name))
+        if require_pk and not self._create_table_has_primary_key(sql):
+            if "identifier" in parsed.semantic_columns or any(sem == "identifier" for sem, _ in additions):
+                additions = [(sem, col) for sem, col in additions if sem != "identifier"]
+                additions.insert(0, ("identifier_pk", "id"))
+            else:
+                additions.insert(0, ("identifier_pk", "id"))
+        qualified_sql = self._qualify_create_table_name(sql)
+        if not additions:
+            return qualified_sql, ["SANDBOX_RULE_AWARE_DRAFT_QUALIFIED"] if qualified_sql != sql else []
+        return self._insert_create_table_columns(qualified_sql, additions), ["SANDBOX_RULE_AWARE_DRAFT_REPAIRED"]
+
+    @staticmethod
+    def _default_column_for_semantic(semantic: str) -> str:
+        return {
+            "identifier": "id",
+            "created_timestamp": "created_at",
+            "updated_timestamp": "updated_at",
+            "email": "email",
+        }.get(str(semantic or ""), str(semantic or "column"))
+
+    @staticmethod
+    def _create_table_has_primary_key(sql: str) -> bool:
+        return bool(re.search(r"\bprimary\s+key\b", sql or "", re.I))
+
+    @staticmethod
+    def _qualify_create_table_name(sql: str) -> str:
+        match = re.search(r"\bcreate\s+table\s+(?:if\s+not\s+exists\s+)?([A-Za-z_][\w]*)\s*\(", sql or "", re.I)
+        if not match:
+            return sql
+        table = match.group(1)
+        return sql[:match.start(1)] + f'public."{table}"' + sql[match.end(1):]
+
+    def _insert_create_table_columns(self, sql: str, additions: list[tuple[str, str]]) -> str:
+        open_index = sql.find("(")
+        close_index = sql.rfind(")")
+        if open_index < 0 or close_index < open_index:
+            return sql
+        before = sql[:open_index + 1]
+        body = sql[open_index + 1:close_index].strip()
+        after = sql[close_index:]
+        new_lines = []
+        for semantic, column in additions:
+            if semantic == "identifier_pk":
+                new_lines.append(f"  {column} bigint PRIMARY KEY")
+            elif semantic in {"created_timestamp", "updated_timestamp"}:
+                new_lines.append(f"  {column} timestamp")
+            else:
+                new_lines.append(f"  {column} text")
+        existing = [re.sub(r"\bTEXT\b", "text", line.strip(), flags=re.I) for line in body.splitlines() if line.strip()]
+        all_lines = new_lines + existing
+        rendered = ",\n".join(line.rstrip(",") for line in all_lines)
+        return before.rstrip() + "\n" + rendered + "\n" + after.lstrip()
+
     def generate_sql(self, message: str, model_profile_id: str | None = None, target: str | None = None, sandbox_id: str | None = None, database_profile_id: str | None = None, session_id: str | None = None) -> dict[str, Any]:
         state = self._load_state(session_id)
         context_pack = self._build_context_pack(session_id=session_id, message=message, state=state, target=target, sandbox_id=sandbox_id, database_profile_id=database_profile_id)
@@ -1779,6 +1879,22 @@ class AgentRuntime:
         }
         generated["context_pack"] = context_pack.to_dict()
         sql = generated.get("generated_sql") or ""
+        active_rules = self._active_sandbox_rules(context_pack.database_profile_id, context_pack.sandbox_id)
+        if sql and active_rules:
+            repaired_sql, repair_notes = self._rule_aware_create_table_sql(sql, active_rules)
+            if repaired_sql != sql:
+                sql = repaired_sql
+                generated["generated_sql"] = repaired_sql
+                if isinstance(generated.get("model_output"), dict):
+                    generated["model_output"]["sql"] = repaired_sql
+                generated["sandbox_rule_generation"] = {"active_rule_count": len(active_rules), "notes": repair_notes}
+            check = self.sandbox_rule_engine.check_sql(sql, active_rules)
+            generated.setdefault("sandbox_rule_generation", {"active_rule_count": len(active_rules), "notes": []})["check"] = check
+            if check.get("status") != "passed":
+                generated["blocked"] = True
+                generated["reason"] = "SANDBOX_RULE_GENERATED_DRAFT_VIOLATION"
+                generated["generated_sql"] = ""
+                sql = ""
         if sql:
             state.remember_sql(sql, intent=str((generated.get("model_output") or {}).get("intent") or "database_task"))
         self._save_state(session_id, state)

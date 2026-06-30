@@ -101,8 +101,12 @@ class SandboxRuleStore:
 
     def list_rules(self, database_profile_id: str, sandbox_id: str) -> dict[str, Any]:
         scope = self.scope_dir(database_profile_id, sandbox_id)
-        active = self._read_json(scope / "active_rules.json", {"rules": []}).get("rules", [])
+        raw_active = self._read_json(scope / "active_rules.json", {"rules": []}).get("rules", [])
+        # Defensive cleanup at read boundary: older builds could leave disabled or
+        # draft records inside active_rules.json. Do not return them as active.
+        active = [r for r in raw_active if r.get("status") == "active"]
         drafts = [self._read_json(p, {}) for p in sorted((scope / "drafts").glob("*.json"))]
+        drafts = [r for r in drafts if r and r.get("status") != "active"]
         return {"database_profile_id": database_profile_id, "sandbox_id": sandbox_id, "active_rules": active, "draft_rules": drafts, "rules": active + drafts}
 
     def write_validation_report(self, rule: dict[str, Any], report: dict[str, Any]) -> Path:

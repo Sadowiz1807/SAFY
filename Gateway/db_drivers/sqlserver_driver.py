@@ -32,19 +32,24 @@ class SQLServerDriver:
     driver = "sqlserver"
 
     def _server_target(self, profile: dict[str, Any]) -> str:
+        explicit_server = str(profile.get("server") or profile.get("server_name") or "").strip()
+        if explicit_server:
+            return explicit_server
         host = str(profile.get("host") or "127.0.0.1").strip()
         if host.lower().startswith("tcp:"):
             host = host[4:].strip()
         instance = str(profile.get("instance") or "").strip()
-        port = int(profile.get("port") or 0)
+        raw_port = profile.get("port")
+        port = int(raw_port) if str(raw_port or "").strip() else 0
 
-        # A fixed TCP port is authoritative. Do not combine it with a named
-        # instance because `host\instance,port` is ambiguous and caused SAFY to
-        # route differently from the native Test Connection workflow.
+        # Named instances must use SERVER\\INSTANCE when no fixed TCP port is
+        # supplied; forcing tcp:SERVER,1433 breaks local SQLEXPRESS discovery.
+        if port > 0 and not instance:
+            return f"tcp:{host},{port}"
+        if instance and port <= 0:
+            return f"{host}\\{instance}"
         if port > 0:
             return f"tcp:{host},{port}"
-        if instance:
-            return f"{host}\\{instance}"
         return host
 
     @staticmethod
@@ -127,26 +132,20 @@ class SQLServerDriver:
         details: dict[str, Any] = {"authentication": authentication}
         if "18452" in message or "untrusted domain" in lowered:
             details["sql_server_error"] = 18452
-            return DriverError(
-                "SQLSERVER_UNTRUSTED_DOMAIN",
-                "SQL Server rejected Windows Integrated Authentication because the login domain is not trusted.",
-                details,
-            )
+            return DriverError("DATABASE_AUTH_FAILED", "SQL Server rejected Windows Integrated Authentication because the login domain is not trusted.", details)
         if "18456" in message or "login failed for user" in lowered:
             details["sql_server_error"] = 18456
-            return DriverError(
-                "SQLSERVER_LOGIN_FAILED",
-                "SQL Server rejected the supplied login. Verify the saved username/password and authentication mode.",
-                details,
-            )
+            return DriverError("DATABASE_AUTH_FAILED", "SQL Server rejected the supplied login. Verify username/password and authentication mode.", details)
+        if "cannot open database" in lowered or "database" in lowered and "not accessible" in lowered:
+            return DriverError("DATABASE_NOT_FOUND", "SQL Server database was not found or is not accessible.", details)
+        if "certificate" in lowered or "ssl" in lowered or "trust" in lowered:
+            return DriverError("DATABASE_CERTIFICATE_ERROR", "SQL Server TLS/certificate validation failed.", details)
+        if "timeout" in lowered or "10060" in message or "11001" in message or "server is not found" in lowered or "network-related" in lowered:
+            return DriverError("DATABASE_CONNECT_FAILED", "SQL Server instance was not reachable before timeout.", details)
         if "10061" in message or "actively refused" in lowered:
             details["sql_server_error"] = 10061
-            return DriverError(
-                "SQLSERVER_CONNECTION_REFUSED",
-                "SQL Server refused the TCP connection. Verify TCP/IP, host, port, and service state.",
-                details,
-            )
-        return DriverError("DB_CONNECTION_FAILED", message, details)
+            return DriverError("DATABASE_CONNECT_FAILED", "SQL Server refused the connection. Verify TCP/IP, host, port, instance, and service state.", details)
+        return DriverError("DATABASE_CONNECT_FAILED", message, details)
 
     def _connection_string(self, profile: dict[str, Any], password: str | None, *, read_only: bool = True) -> str:
         driver = str(profile.get("odbc_driver") or "ODBC Driver 18 for SQL Server").strip()

@@ -1,0 +1,1 @@
+export function renderExecuteBox(textarea, executeState = {}) { if (!textarea) return; if (document.activeElement !== textarea) textarea.value = executeState.sql || ""; textarea.dataset.checkStatus = executeState.check ? executeState.check.status : "unchecked"; }

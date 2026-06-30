@@ -42,6 +42,8 @@ from Sandbox.sandbox_manager import SandboxError, SandboxManager
 from Core.sandbox_rule_engine import SandboxRuleEngine
 from DataStore.sandbox_rule_store import SandboxRuleStore
 
+RULE_NON_BLOCKING_STATUSES = {"passed", "not_applicable", "not_configured"}
+
 
 @dataclass(frozen=True)
 class QueryOrchestratorContext:
@@ -585,7 +587,9 @@ class QueryOrchestrator:
             )
 
         rules_payload = self._evaluate_sandbox_rules(normalized_sql, database_profile_id, sandbox_id)
-        if rules_payload.get("status") == "failed":
+        rules_status = str(rules_payload.get("status") or "unknown")
+        if not classification.is_read_only and rules_status not in RULE_NON_BLOCKING_STATUSES:
+            rule_failed = rules_status == "failed"
             return self._blocked_execute_box_check_response(
                 check_id=check_id,
                 sql_hash=sql_hash,
@@ -598,9 +602,9 @@ class QueryOrchestrator:
                 sandbox_id=sandbox_id,
                 permission_mode=permission_mode,
                 expires_at=expires_at,
-                code="SANDBOX_RULE_BLOCKED",
-                message="Active sandbox rule blocked this SQL before sandbox execution.",
-                warnings=["sandbox_rule_violation"],
+                code="SANDBOX_RULE_BLOCKED" if rule_failed else "SANDBOX_RULE_STATE_BLOCKED",
+                message="Active sandbox rule blocked this SQL before sandbox execution." if rule_failed else f"Sandbox rules returned non-pass state '{rules_status}' and blocked mutation fail-closed.",
+                warnings=["sandbox_rule_violation" if rule_failed else "sandbox_rule_non_pass_state"],
                 batch_info=batch_info,
                 database_profile=database_profile,
                 sandbox_rules=rules_payload,
@@ -727,14 +731,16 @@ class QueryOrchestrator:
             warnings = list(dict.fromkeys(risk.risk_reasons + ["sandbox_validation_passed"]))
             error_code = None
             blocked_message = None
-        except SandboxError as exc:
-            sandbox_payload = {"success": False, "status": "sandbox_failed", "error": {"code": exc.code, "message": str(exc), "details": exc.details}}
+        except (SandboxError, KeyError) as exc:
+            code = exc.code if isinstance(exc, SandboxError) else "SANDBOX_NOT_FOUND"
+            details = exc.details if isinstance(exc, SandboxError) else {}
+            sandbox_payload = {"success": False, "status": "sandbox_failed", "error": {"code": code, "message": str(exc), "details": details}}
             sandbox_status = "failed"
             safety_status = "blocked"
             decision = "BLOCK_SANDBOX_FAILED"
             allowed = False
-            warnings = list(dict.fromkeys(risk.risk_reasons + [exc.code]))
-            error_code = exc.code or "SANDBOX_VALIDATION_FAILED"
+            warnings = list(dict.fromkeys(risk.risk_reasons + [code]))
+            error_code = code or "SANDBOX_VALIDATION_FAILED"
             blocked_message = f"Sandbox validation failed: {str(exc)}"
 
         response = {

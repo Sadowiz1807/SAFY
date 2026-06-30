@@ -12,13 +12,15 @@ DEFAULT_OUTPUT = ROOT / "Reports" / "packages" / "SAFY_CLEAN_SOURCE_PACKAGE.zip"
 
 EXCLUDE_DIRS = {
     ".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules",
-    ".venv", "venv", "Sandbox/workspaces", "Reports/packages",
+    ".venv", "venv", "Sandbox/workspaces", "Reports/packages", "Reports/audit_tmp", "Reports/audits", "Reports/e2e_tests", "Reports/verification", "Reports/fixes",
 }
 EXCLUDE_PATTERNS = [
     ".env", ".env.*", "*.pyc", "*.pyo", "*.log", "*.sqlite", "*.sqlite3", "*.db",
     "Data/secrets/*", "Data/sessions/*", "Data/sandboxes/*", "Data/context_files/files/*",
     "Data/context_files/metadata/*.json", "Data/context_files/metadata/legacy/*",
-    "Data/Database_management/database_profiles.json", "Data/model_profiles/model_profiles.json",
+    "Data/sandbox_rules/databases/*", "Data/sandbox_rules/*.json", "Reports/audit_tmp/*",
+    "Data/Database_management/database_profiles.json", "Data/model_profiles/model_profiles.json", "Data/safy_profiles.json", "Reports/audits/*",
+    "Reports/e2e_tests/*", "Reports/verification/*", "Reports/fixes/*",
     "Data/User/user_profiles.json", "Data/SchemaGraph/*", "Datasets/*",
 ]
 ALLOW_KEEP = {"Data/context_files/.gitkeep", "Data/context_files/files/.gitkeep", "Data/context_files/metadata/.gitkeep", "Data/context_files/metadata/legacy/.gitkeep", "Data/SchemaGraph/.gitkeep"}

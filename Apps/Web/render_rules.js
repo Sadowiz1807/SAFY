@@ -1,0 +1,1 @@
+export function renderRules(container, rules = []) { if (!container) return; container.innerHTML = rules.map((r) => `<div class="rule-row"><span class="dot active"></span>${String(r.raw || r.text || "")}</div>`).join(""); }

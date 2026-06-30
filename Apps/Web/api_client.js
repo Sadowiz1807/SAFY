@@ -1,0 +1,1 @@
+export async function safyFetch(path, options = {}) { const res = await fetch(path, { headers: { "Content-Type": "application/json", ...(options.headers || {}) }, ...options }); const body = await res.json().catch(() => null); if (!body || typeof body !== "object") throw new Error("SAFY_NON_JSON_RESPONSE"); return body; }

@@ -32,14 +32,32 @@ def sanitize_sql_input(sql: str | None) -> str:
     return match.group("body").strip() if match else text.strip()
 
 
+_DOLLAR_QUOTE_RE = re.compile(r"\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$")
+
+
+def _dollar_quote_at(sql: str, index: int) -> str | None:
+    match = _DOLLAR_QUOTE_RE.match(sql, index)
+    return match.group(0) if match else None
+
+
 def strip_comments(sql: str) -> str:
-    # Keeps string literals intact while removing line/block comments.
+    # Keeps string and PostgreSQL dollar-quoted literals intact while removing comments.
     out: list[str] = []
     i = 0
     quote: str | None = None
+    dollar_tag: str | None = None
     while i < len(sql):
         ch = sql[i]
         nxt = sql[i + 1] if i + 1 < len(sql) else ""
+        if dollar_tag:
+            if sql.startswith(dollar_tag, i):
+                out.append(dollar_tag)
+                i += len(dollar_tag)
+                dollar_tag = None
+            else:
+                out.append(ch)
+                i += 1
+            continue
         if quote:
             out.append(ch)
             if ch == quote:
@@ -49,6 +67,12 @@ def strip_comments(sql: str) -> str:
                     continue
                 quote = None
             i += 1
+            continue
+        tag = _dollar_quote_at(sql, i)
+        if tag:
+            dollar_tag = tag
+            out.append(tag)
+            i += len(tag)
             continue
         if ch in ("'", '"'):
             quote = ch
@@ -77,9 +101,17 @@ def split_statements(sql: str) -> list[str]:
     statements: list[str] = []
     start = 0
     quote: str | None = None
+    dollar_tag: str | None = None
     i = 0
     while i < len(sql):
         ch = sql[i]
+        if dollar_tag:
+            if sql.startswith(dollar_tag, i):
+                i += len(dollar_tag)
+                dollar_tag = None
+            else:
+                i += 1
+            continue
         if quote:
             if ch == quote:
                 if i + 1 < len(sql) and sql[i + 1] == quote:
@@ -87,6 +119,11 @@ def split_statements(sql: str) -> list[str]:
                     continue
                 quote = None
             i += 1
+            continue
+        tag = _dollar_quote_at(sql, i)
+        if tag:
+            dollar_tag = tag
+            i += len(tag)
             continue
         if ch in ("'", '"'):
             quote = ch

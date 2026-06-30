@@ -144,8 +144,8 @@ class SupabaseRpcDriver:
                 raise DriverError("DB_BASE_URL_INVALID", "Supabase Base URL path must be /rest/v1 or the project root.")
         return f"https://{parsed.netloc}{path}"
 
-    def _headers(self, profile: dict[str, Any], *, accept: str = "application/json") -> dict[str, str]:
-        secret = self._secret(profile)
+    def _headers(self, profile: dict[str, Any], secret_context: SecretContext | None = None, *, accept: str = "application/json") -> dict[str, str]:
+        secret = self._secret(profile, secret_context)
         return {
             "apikey": secret,
             "Authorization": f"Bearer {secret}",
@@ -161,8 +161,9 @@ class SupabaseRpcDriver:
         accept: str = "application/json",
         body: dict[str, Any] | None = None,
         operation: str = "request",
+        secret_context: SecretContext | None = None,
     ) -> tuple[Any, int]:
-        headers = self._headers(profile, accept=accept)
+        headers = self._headers(profile, secret_context, accept=accept)
         data = None
         if body is not None:
             data = json.dumps(body).encode("utf-8")
@@ -205,10 +206,11 @@ class SupabaseRpcDriver:
             elif exc.code == 404:
                 code = "DB_RESOURCE_NOT_FOUND"
                 message = "Supabase REST endpoint or RPC function was not found."
-            # PostgREST returns PGRST202 when an RPC function is missing from the schema cache.
-            if operation == "execute_rpc" and (
+            is_rpc_operation = operation in {"execute_rpc", "test_connection_rpc"}
+            provider_code = str((parsed or {}).get("code") or "").upper() if isinstance(parsed, dict) else ""
+            if is_rpc_operation and (
                 exc.code == 404
-                or (isinstance(parsed, dict) and str(parsed.get("code") or "").upper() == "PGRST202")
+                or provider_code == "PGRST202"
                 or "schema cache" in raw.lower()
             ):
                 rpc_function = details.get("rpc_function") or "safy_execute_sql"
@@ -217,6 +219,10 @@ class SupabaseRpcDriver:
                     f"Supabase SQL RPC function '{rpc_function}' is not installed or PostgREST schema cache has not reloaded.",
                     details,
                 ) from exc
+            if is_rpc_operation and ("wrong_arg" in raw or "argument" in raw.lower() or "parameter" in raw.lower()):
+                raise DriverError("SUPABASE_RPC_ARGUMENT_INVALID", "Supabase SQL RPC argument name is invalid for the configured function.", details) from exc
+            if is_rpc_operation:
+                raise DriverError("SUPABASE_RPC_CALL_FAILED", message, details) from exc
             raise DriverError(code, message, details) from exc
         except URLError as exc:
             raise DriverError("DB_CONNECTION_FAILED", f"Supabase connection failed: {exc.reason}") from exc
@@ -242,7 +248,23 @@ class SupabaseRpcDriver:
     def test_connection(self, profile: dict[str, Any], secret_context: SecretContext | None = None) -> dict[str, Any]:
         self._secret(profile, secret_context)
         base = self._base_url(profile)
-        data, status = self._request_json(profile, base + "/", operation="test_connection")
+        function = self._rpc_function(profile)
+        argument = self._rpc_argument(profile)
+        try:
+            data, status = self._request_json(
+                profile,
+                base + "/rpc/" + function,
+                method="POST",
+                body={argument: "SELECT 1 AS safy_test;"},
+                operation="test_connection_rpc",
+                secret_context=secret_context,
+            )
+        except DriverError as exc:
+            if exc.error_code == "SUPABASE_RPC_NOT_INSTALLED":
+                exc.details.setdefault("rpc_function", function)
+            if exc.error_code in {"SUPABASE_RPC_FAILED", "SUPABASE_RPC_EXECUTION_FAILED"}:
+                exc.error_code = "SUPABASE_RPC_CALL_FAILED"
+            raise
         return success_envelope(
             self.driver,
             profile,
@@ -251,7 +273,8 @@ class SupabaseRpcDriver:
                 "provider": "supabase",
                 "connection_kind": "supabase_rpc",
                 "execution_transport": "postgrest_rpc",
-                "rpc_function": self._rpc_function(profile),
+                "rpc_function": function,
+                "rpc_argument": argument,
             },
         )
 

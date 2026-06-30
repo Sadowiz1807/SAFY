@@ -1,4 +1,8 @@
 const SAFY_API_BASE = window.SAFY_API_BASE || '';
+import('/static/state.js').then((m) => { window.SAFY_STATE_MODULE = m; }).catch(() => {});
+import('/static/api_client.js').then((m) => { window.SAFY_API_CLIENT_MODULE = m; }).catch(() => {});
+import('/static/render_rules.js').then((m) => { window.SAFY_RENDER_RULES_MODULE = m; }).catch(() => {});
+import('/static/render_execute_box.js').then((m) => { window.SAFY_RENDER_EXECUTE_BOX_MODULE = m; }).catch(() => {});
 let safyCurrentCheck = null;
 let safySafetyBinding = null;
 let safySafetyBindingExpiryTimer = null;
@@ -40,13 +44,34 @@ const SAFY_CHAT_COMMANDS = [
 function normalizedError(error, fallbackMessage) {
   const rawCode = error?.code || 'SAFY_API_ERROR';
   const rawMessage = error?.message || fallbackMessage || String(error);
-  return { code: rawCode, message: friendlyErrorMessage(rawCode, rawMessage), details: {}, next_action: suggestedNextAction(rawCode, rawMessage) };
+  const safeDetails = redactDiagnosticDetails(error?.details || error?.body?.error?.details || {});
+  const requestId = safeDetails.request_id || error?.body?.meta?.request_id || error?.body?.request_id || null;
+  if (requestId && !safeDetails.request_id) safeDetails.request_id = requestId;
+  return { code: rawCode, message: friendlyErrorMessage(rawCode, rawMessage), raw_message: redactForDisplay(rawMessage), details: safeDetails, request_id: requestId, next_action: suggestedNextAction(rawCode, rawMessage) };
+}
+
+function redactDiagnosticDetails(details) {
+  if (!details || typeof details !== 'object') return {};
+  const safe = {};
+  Object.entries(details).forEach(([key, value]) => {
+    if (/password|secret|api[_-]?key|token/i.test(key)) {
+      safe[key] = '[REDACTED]';
+    } else if (typeof value === 'string') {
+      safe[key] = redactForDisplay(value).slice(0, 1000);
+    } else if (value === null || ['number', 'boolean'].includes(typeof value)) {
+      safe[key] = value;
+    } else {
+      safe[key] = redactForDisplay(JSON.stringify(value)).slice(0, 1000);
+    }
+  });
+  return safe;
 }
 
 function friendlyErrorMessage(code, message) {
   const text = redactForDisplay(message);
   const codeText = String(code || '');
 
+  if (/^(LLM_CONTEXT_TOO_LARGE|LLM_MESSAGE_CONTENT_INVALID|LLM_PROVIDER_BAD_REQUEST|LLM_PROVIDER_RESPONSE_INVALID|BLOCKED_LLM_PROVIDER_PROTOCOL_ERROR)$/i.test(codeText)) return text || codeText;
   if (codeText === 'MODEL_PROFILE_NOT_ACTIVATED') return 'Please save and activate the LM Studio profile first.';
   if (/^AUTH_|login|SAFY_LOGIN_PASSWORD/i.test(codeText + ' ' + text)) {
     if (/invalid password/i.test(text) || codeText === 'AUTH_INVALID_PASSWORD') return 'Invalid password.';
@@ -466,7 +491,7 @@ async function ensureActiveSandbox() {
 
 function sandboxScope() {
   const databaseProfileId = safyDatabaseProfile?.profile_id || 'db_default';
-  const sandboxId = safySandboxId || `db_${databaseProfileId}`;
+  const sandboxId = safySandboxId || 'sandbox_default';
   return { databaseProfileId, sandboxId };
 }
 
@@ -544,34 +569,57 @@ async function saveSandboxRuleDraft() {
   const text = String(textInput?.value || '').trim();
   if (!text) return showToast('Enter a sandbox rule first.', 'info');
   const { databaseProfileId, sandboxId } = sandboxScope();
-  const data = await apiRequest('/sandbox-rules/save', {
-    method: 'POST',
-    body: JSON.stringify({
-      database_profile_id: databaseProfileId,
-      sandbox_id: sandboxId,
-      rule_id: safySelectedSandboxRuleId || null,
-      raw_text: text,
-      connection_name: safyDatabaseProfile?.connection_name || safyDatabaseProfile?.profile_name || null
-    })
-  });
-  if (reportEl) reportEl.textContent = JSON.stringify(data.validation_report || {}, null, 2);
-  if (!data.saved) {
-    showToast(data.message || 'Rule was not saved because validation found a conflict.', 'error');
+  try {
+    const data = await apiRequest('/sandbox-rules/save', {
+      method: 'POST',
+      body: JSON.stringify({
+        database_profile_id: databaseProfileId,
+        sandbox_id: sandboxId,
+        rule_id: safySelectedSandboxRuleId || null,
+        raw_text: text,
+        connection_name: safyDatabaseProfile?.connection_name || safyDatabaseProfile?.profile_name || null
+      })
+    });
+    const reportPayload = {
+      saved: Boolean(data.saved),
+      message: data.message || '',
+      rule_id: data.rule?.rule_id || null,
+      status: data.rule?.status || data.validation_report?.status || null,
+      parsed_rules: data.rule?.parsed_rules || data.validation_report?.parsed_rules || [],
+      dsl: data.rule?.dsl || null,
+      validation_report: data.validation_report || {},
+      served_by: data.served_by || null
+    };
+    if (reportEl) reportEl.textContent = JSON.stringify(reportPayload, null, 2);
+    if (!data.saved) {
+      showToast(data.message || 'Rule was not saved because validation found a conflict.', 'error');
+      await loadSandboxRulesStatus();
+      return;
+    }
+    safySelectedSandboxRuleId = data.rule?.rule_id || null;
+    showToast(data.message || 'Sandbox rule saved and activated.', 'success');
     await loadSandboxRulesStatus();
-    return;
+  } catch (error) {
+    const normalized = normalizedError(error, 'Sandbox rule save failed.');
+    if (reportEl) reportEl.textContent = JSON.stringify({ saved: false, error: normalized }, null, 2);
+    renderNormalizedError(error);
+    showToast(normalized.message || 'Sandbox rule save failed.', 'error');
   }
-  safySelectedSandboxRuleId = data.rule?.rule_id || null;
-  showToast(data.message || 'Sandbox rule saved and activated.', 'success');
-  await loadSandboxRulesStatus();
 }
+
 
 async function validateSandboxRule() {
   if (!safySelectedSandboxRuleId) await saveSandboxRuleDraft();
   if (!safySelectedSandboxRuleId) return;
   const { databaseProfileId, sandboxId } = sandboxScope();
-  const data = await apiRequest('/sandbox-rules/validate', { method: 'POST', body: JSON.stringify({ database_profile_id: databaseProfileId, sandbox_id: sandboxId, rule_id: safySelectedSandboxRuleId }) });
-  document.getElementById('sandbox-rule-report').textContent = JSON.stringify(data.validation_report || {}, null, 2);
-  await loadSandboxRulesStatus();
+  try {
+    const data = await apiRequest('/sandbox-rules/validate', { method: 'POST', body: JSON.stringify({ database_profile_id: databaseProfileId, sandbox_id: sandboxId, rule_id: safySelectedSandboxRuleId }) });
+    document.getElementById('sandbox-rule-report').textContent = JSON.stringify(data.validation_report || data, null, 2);
+    await loadSandboxRulesStatus();
+  } catch (error) {
+    document.getElementById('sandbox-rule-report').textContent = JSON.stringify({ error: normalizedError(error, 'Rule validation failed.') }, null, 2);
+    renderNormalizedError(error);
+  }
 }
 
 async function activateSandboxRule() {
@@ -587,8 +635,18 @@ async function activateSandboxRule() {
 async function disableSandboxRule() {
   if (!safySelectedSandboxRuleId) return showToast('Select a sandbox rule first.', 'info');
   const { databaseProfileId, sandboxId } = sandboxScope();
-  await apiRequest('/sandbox-rules/disable', { method: 'POST', body: JSON.stringify({ database_profile_id: databaseProfileId, sandbox_id: sandboxId, rule_id: safySelectedSandboxRuleId }) });
-  await loadSandboxRulesStatus();
+  try {
+    const data = await apiRequest('/sandbox-rules/disable', { method: 'POST', body: JSON.stringify({ database_profile_id: databaseProfileId, sandbox_id: sandboxId, rule_id: safySelectedSandboxRuleId }) });
+    const report = document.getElementById('sandbox-rule-report');
+    if (report) report.textContent = JSON.stringify({ disabled: true, rule: data.rule || data }, null, 2);
+    safySelectedSandboxRuleId = null;
+    await loadSandboxRulesStatus();
+    showToast('Sandbox rule disabled.', 'success');
+  } catch (error) {
+    const report = document.getElementById('sandbox-rule-report');
+    if (report) report.textContent = JSON.stringify({ disabled: false, error: normalizedError(error, 'Rule disable failed.') }, null, 2);
+    renderNormalizedError(error);
+  }
 }
 
 async function uploadSandboxRuleFile(event) {
@@ -885,10 +943,15 @@ function formatAgentReply(reply) {
     const rowCount = queryRowCountFromPayload(reply);
     return reply?.answer || `Đã đọc dữ liệu an toàn từ database. Row count: ${rowCount}.`;
   }
+  const directContent = reply?.assistant_message || reply?.content || reply?.message;
+  if (directContent && !reply?.generated_sql && !reply?.check && !reply?.execute) {
+    return String(directContent);
+  }
   if (reply?.answer && !reply?.generated_sql && !reply?.check && !reply?.execute) {
     return String(reply.answer);
   }
   const lines = [];
+  if (directContent) lines.push(String(directContent));
   if (reply?.answer) lines.push(String(reply.answer));
   if (reply?.generated_sql || reply?.execute_box?.sql) {
     lines.push('', 'Generated SQL is available in the SQL artifact card and Execute Box.');
@@ -2849,6 +2912,7 @@ async function sendChatMessage() {
     if (activeDatabaseProfile?.profile_id) {
       basePayload.database_profile_id = activeDatabaseProfile.profile_id;
     }
+    basePayload.sandbox_id = safySandboxId || 'sandbox_default';
     if (shouldUseDatabaseRuntime && activeDatabaseProfile?.profile_id) {
       basePayload.target = 'connected_database';
       basePayload.auto_execute = readOnlyDbRequest;
@@ -2873,9 +2937,11 @@ async function sendChatMessage() {
     if (!body || body.success !== true) {
       const error = normalizedError({
         code: body?.error?.code || 'CHAT_REQUEST_FAILED',
-        message: body?.error?.message || 'Chat request failed.'
+        message: body?.error?.message || 'Chat request failed.',
+        details: body?.error?.details,
+        body
       }, 'Chat request failed.');
-      appendChatBubble('assistant', error.message);
+      appendChatBubble('assistant', `${error.code}: ${error.message}${error.request_id ? ` (request_id: ${error.request_id})` : ''}`);
       return;
     }
 
@@ -2918,6 +2984,19 @@ function renderSafetyReport(data) {
     status.textContent = `${label}${suffix}`;
   }
   if (target) target.textContent = data.target || 'Active database';
+  const summary = document.getElementById('execution-summary');
+  if (summary) {
+    const details = {
+      check_id: data.check_id || null,
+      safety_status: data.safety_status || null,
+      decision: data.decision || null,
+      allowed_to_attempt: data.allowed_to_attempt ?? null,
+      warnings: data.warnings || [],
+      blockers: data.blockers || data.safety_report?.reasons || data.risk_reasons || [],
+      served_by: data.served_by || null
+    };
+    summary.textContent = redactForDisplay(JSON.stringify(details, null, 2));
+  }
 }
 
 function updateExecuteBoxFromAgent(reply = {}) {

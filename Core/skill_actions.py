@@ -282,20 +282,22 @@ class TextToSqlSkill:
             return None
         dialect = str(target_payload.get("dialect") or target_payload.get("driver") or target_payload.get("database_type") or "").lower()
         int_type = "INT" if dialect in {"mysql", "mariadb", "sqlserver"} else "INTEGER"
+        text_type = "TEXT"
+        table_name = table
         lines = []
         has_pk = False
         for col in cols:
             if col.lower() == "id" and not has_pk:
-                lines.append(f"    {col} {int_type} PRIMARY KEY")
+                lines.append(f"  {col} {int_type} PRIMARY KEY")
                 has_pk = True
             else:
-                lines.append(f"    {col} TEXT")
-        sql = f"CREATE TABLE {table} (\n" + ",\n".join(lines) + "\n);"
+                lines.append(f"  {col} {text_type}")
+        sql = f"CREATE TABLE {table_name} (\n" + ",\n".join(lines) + "\n);"
         plan = SemanticActionPlan(
             operation=CREATE_OBJECT,
             scope="SINGLE_OBJECT",
             object_type="TABLE",
-            targets=[table],
+            targets=[table_name.replace('"', '')],
             schema_effect="SCHEMA_WRITE",
             requires_schema=False,
             requires_confirmation=True,

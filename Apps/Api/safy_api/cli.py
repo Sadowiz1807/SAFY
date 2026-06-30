@@ -102,7 +102,7 @@ def main() -> None:
         if args.browser:
             threading.Thread(target=_open_browser_when_ready, args=(url, health_url), daemon=True).start()
         uvicorn.run(
-            "Apps.Api.safy_api.main:app",
+            "Apps.Api.safy_api.app_factory:app",
             host=args.host,
             port=args.port,
             reload=not args.no_reload,
