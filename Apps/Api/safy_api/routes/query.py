@@ -1,14 +1,8 @@
-from pathlib import Path
-
 from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict
 
 from Apps.Api.safy_api.runtime_store import envelope, error_envelope
-from DataStore.profile_store import database_profile_store
-from Gateway.db_drivers.factory import execute_readonly, execute_user_sql
-from Gateway.sql_classifier import classify_sql
-from Gateway.sql_normalizer import normalize_sql
-from Runtime.strict_services import check_query
+from Runtime.strict_services import check_query, execute_query
 
 router = APIRouter()
 
@@ -30,25 +24,11 @@ class QueryCheckPayload(BaseModel):
 
 
 class QueryExecutePayload(QueryCheckPayload):
-    pass
-
-
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[4]
-
-
-def _database_store():
-    return database_profile_store(_repo_root() / "Data" / "safy_profiles.json")
-
-
-def _active_or_requested_profile(profile_id: str | None) -> dict:
-    store = _database_store()
-    if profile_id:
-        return store.get(profile_id)
-    for profile in store.read_all():
-        if profile.get("active") or profile.get("is_active"):
-            return profile
-    raise RuntimeError("DATABASE_PROFILE_REQUIRED")
+    check_id: str | None = None
+    sql_hash: str | None = None
+    user_decision: str | None = None
+    confirmation_code: str | None = None
+    row_limit: int = 100
 
 
 @router.post("/query/check")
@@ -62,15 +42,10 @@ def query_check_route(payload: QueryCheckPayload):
 @router.post("/query/execute")
 def query_execute_route(payload: QueryExecutePayload):
     try:
-        profile = _active_or_requested_profile(payload.database_profile_id)
-        normalized = normalize_sql(payload.sql)
-        first = normalized.statements[0] if normalized.statements else payload.sql
-        classification = classify_sql(first)
-        if len(normalized.statements) == 1 and classification.is_read_only:
-            result = execute_readonly(first, profile, None, {"row_limit": 50})
-        else:
-            result = execute_user_sql(payload.sql, profile, None, {"row_limit": 50})
-        return envelope({"executed": True, "database_profile_id": profile.get("profile_id"), "result": result})
+        ok, result = execute_query(payload.model_dump())
+        if not ok:
+            return error_envelope(result.get("code") or "QUERY_EXECUTION_BLOCKED", result.get("message") or "Query execution was blocked.", result.get("details") or result)
+        return envelope(result)
     except Exception as exc:
         code = getattr(exc, "error_code", None) or str(exc)
         message = str(exc)

@@ -12,6 +12,8 @@ from Orchestrator.request_planner import RequestPlanner
 from Orchestrator.run_loop import RunLoop
 
 router = APIRouter()
+RUNTIME_AUTHORITY = "Runtime/live_runtime.py"
+CHAT_ROUTE_OWNER = "routes/chat.py"
 
 
 def _repo_root() -> Path:
@@ -29,6 +31,21 @@ class ChatPayload(BaseModel):
     session_id: str | None = None
     database_profile_id: str | None = None
     sandbox_id: str | None = None
+
+
+def _project_info_answer(text: str) -> dict | None:
+    normalized = " ".join((text or "").strip().lower().split())
+    if normalized in {"bạn là ai", "ban la ai", "safy là ai", "safy la ai", "who are you", "what are you"} or any(token in normalized for token in ("thông tin dự án", "thong tin du an", "giới thiệu dự án", "gioi thieu du an", "safy là gì", "safy la gi")):
+        return envelope({
+            "assistant_message": "Tôi là SAFY, local AI Database Agent và Database Safety Gateway cho dự án này. SAFY giúp cấu hình model/database profile, hiểu yêu cầu dữ liệu, tạo SQL/schema draft, chạy Check Safety qua policy/sandbox, và chỉ Execute real database khi người dùng xác nhận.",
+            "content": "Tôi là SAFY, local AI Database Agent và Database Safety Gateway cho dự án này. SAFY giúp cấu hình model/database profile, hiểu yêu cầu dữ liệu, tạo SQL/schema draft, chạy Check Safety qua policy/sandbox, và chỉ Execute real database khi người dùng xác nhận.",
+            "message": "Tôi là SAFY, local AI Database Agent và Database Safety Gateway cho dự án này. SAFY giúp cấu hình model/database profile, hiểu yêu cầu dữ liệu, tạo SQL/schema draft, chạy Check Safety qua policy/sandbox, và chỉ Execute real database khi người dùng xác nhận.",
+            "project": "SAFY",
+            "runtime_authority": RUNTIME_AUTHORITY,
+            "runtime_path": "routes/chat.py#local_project_info",
+            "served_by": CHAT_ROUTE_OWNER,
+        })
+    return None
 
 
 def _llm_error_from_exception(exc: Exception, profile: dict | None = None):
@@ -83,11 +100,25 @@ def _run_active_llm_chat(text: str):
     })
 
 
+def _with_runtime_metadata(response: dict, runtime_path: str, planner: str | None = None) -> dict:
+    if response.get("success") is True and isinstance(response.get("data"), dict):
+        response["data"].setdefault("runtime_authority", RUNTIME_AUTHORITY)
+        response["data"].setdefault("runtime_path", runtime_path)
+        response["data"].setdefault("served_by", CHAT_ROUTE_OWNER)
+        if planner:
+            response["data"].setdefault("planned_by", planner)
+    return response
+
+
 @router.post("/chat")
 @router.post("/agent/chat")
 def chat_route(payload: ChatPayload):
     mark("routes.chat.chat_route")
     text = payload.message or payload.text or ""
+    project_info = _project_info_answer(text)
+    if project_info is not None:
+        mark("routes.chat.project_info")
+        return project_info
     session_id = payload.session_id or payload.chat_id or "default"
     CONTEXT_BUILDER.sessions.update_session(
         session_id,
@@ -98,11 +129,13 @@ def chat_route(payload: ChatPayload):
     plan = RequestPlanner().plan(text, snapshot)
     if plan.intent == "chat":
         mark("routes.chat.llm_provider_chat")
-        return _run_active_llm_chat(text)
+        return _with_runtime_metadata(_run_active_llm_chat(text), "LLM/provider_adapters/openai_compatible.py", "Orchestrator/request_planner.py")
 
     result = RunLoop().run_chat(text, snapshot)
     EVENT_BUS.emit("sql.generated" if result.get("sql") else "chat.planned", result)
     result["planned_by"] = "Orchestrator/request_planner.py"
-    result["served_by"] = "routes/chat.py"
+    result["served_by"] = CHAT_ROUTE_OWNER
+    result["runtime_authority"] = RUNTIME_AUTHORITY
+    result["runtime_path"] = "Orchestrator/run_loop.py"
     result["request_planner_intent"] = plan.intent
     return envelope(result)

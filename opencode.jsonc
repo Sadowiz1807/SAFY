@@ -1,0 +1,17 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  "mcp": {
+    "codebase_memory": {
+      "type": "local",
+      "command": [
+        "C:\\Users\\ASUS\\AppData\\Local\\codebase-memory-mcp\\codebase-memory-mcp.exe"
+      ],
+      "enabled": true,
+      "timeout": 60000,
+      "environment": {
+        "CBM_LOG_LEVEL": "warn"
+      }
+    }
+  }
+}

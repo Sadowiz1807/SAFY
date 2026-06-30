@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from DataStore.config_loader import get_repo_root
+from DataStore.profile_store import ProfileStoreError, database_profile_store
 from DataStore.sandbox_rule_store import SandboxRuleStore
 from Core.sandbox_rule_engine import SandboxRuleEngine
 from Core.rules.semantic_compiler import compile_rule
@@ -14,6 +15,17 @@ REPO_ROOT = get_repo_root()
 RULE_STORE = SandboxRuleStore((REPO_ROOT / "Data" / "sandbox_rules").resolve())
 RULE_ENGINE = SandboxRuleEngine()
 QUERY_ORCHESTRATOR = QueryOrchestrator(QueryOrchestratorContext((REPO_ROOT / "Data" / "sessions").resolve(), test_runtime_mode=False))
+
+
+def _database_profile_for_check(database_profile_id: str | None) -> dict[str, Any] | None:
+    if not database_profile_id:
+        return None
+    try:
+        return database_profile_store(REPO_ROOT / "Data" / "safy_profiles.json").get(database_profile_id)
+    except ProfileStoreError as exc:
+        if exc.code == "PROFILE_NOT_FOUND":
+            return None
+        raise
 
 
 def _schema_for_rule_profile(database_profile_id: str | None) -> dict[str, Any]:
@@ -90,20 +102,24 @@ def check_query(payload: dict[str, Any]) -> dict[str, Any]:
     CONTEXT_BUILDER.build(session_id, payload.get("sql") or "")
     db = payload.get("database_profile_id")
     sb = payload.get("sandbox_id") or (f"db_{db}" if db else None)
+    database_profile = _database_profile_for_check(db)
+    permission_mode = payload.get("user_query_access_mode") or (database_profile or {}).get("user_query_access_mode") or "credential_permissions"
+    driver = payload.get("driver") or (database_profile or {}).get("driver") or (database_profile or {}).get("dbms")
+    dialect = payload.get("dialect") or (database_profile or {}).get("dialect")
     check = QUERY_ORCHESTRATOR.check(
         sql=payload.get("sql") or "",
         target=payload.get("target") or "sandbox",
         database_profile_id=db,
-        permission_mode=payload.get("user_query_access_mode") or "credential_permissions",
+        permission_mode=permission_mode,
         execution_path="execute_box_user",
         expose_confirmation_code=False,
         real_db_mode=bool(payload.get("real_db_mode")),
-        database_profile=None,
+        database_profile=database_profile,
         sandbox_id=sb,
         context_generation=payload.get("context_generation"),
         schema_generation=payload.get("schema_generation"),
-        driver=payload.get("driver"),
-        dialect=payload.get("dialect"),
+        driver=driver,
+        dialect=dialect,
     )
     # Route-owned rule enforcement must always run, not only when the old
     # sandbox manager is unavailable. Otherwise Check Safety may return a
@@ -134,3 +150,23 @@ def check_query(payload: dict[str, Any]) -> dict[str, Any]:
     check["served_by"] = "routes/query.py"
     EVENT_BUS.emit("check_safety.completed", {"result": check})
     return check
+
+
+def execute_query(payload: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
+    mark("routes.query.query_execute")
+    ok, result = QUERY_ORCHESTRATOR.execute(
+        check_id=payload.get("check_id"),
+        sql_hash=payload.get("sql_hash"),
+        target=payload.get("target") or "sandbox",
+        user_decision=payload.get("user_decision"),
+        confirmation_code=payload.get("confirmation_code"),
+        database_profile_id=payload.get("database_profile_id"),
+        row_limit=int(payload.get("row_limit") or 100),
+        sandbox_id=payload.get("sandbox_id"),
+        context_generation=payload.get("context_generation"),
+        schema_generation=payload.get("schema_generation"),
+        driver=payload.get("driver"),
+        dialect=payload.get("dialect"),
+    )
+    EVENT_BUS.emit("query.execute.completed", {"success": ok, "result": result})
+    return ok, result

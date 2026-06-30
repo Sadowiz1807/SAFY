@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 import os
+import re
 
 from fastapi import APIRouter
 
@@ -186,6 +187,27 @@ def _normalize_database_payload(payload: dict[str, Any], existing: dict[str, Any
             "sql_rpc_function": payload.get("rpc_function_name") or payload.get("sql_rpc_function") or "safy_execute_sql",
             "sql_rpc_argument": payload.get("sql_rpc_argument") or "sql",
         })
+    elif str(driver).lower() == "sqlite":
+        sqlite_path = payload.get("sqlite_path") or payload.get("database") or data.get("sqlite_path") or data.get("database") or ""
+        data.update({
+            "driver": "sqlite",
+            "dbms": "sqlite",
+            "database_type": "sqlite",
+            "provider": payload.get("provider") or data.get("provider") or "self_hosted",
+            "connection_kind": "native_sql",
+            "execution_transport": "native_driver",
+            "sqlite_path": sqlite_path,
+            "database": sqlite_path,
+            "host": "local_file",
+            "port": 0,
+            "username": "",
+            "authentication": "none",
+            "password_mode": "none",
+            "secret_mode": "none",
+            "password_env": "",
+            "secret_env": "",
+            "api_key_env": "",
+        })
     elif str(driver).lower() in {"sqlserver", "sql_server", "mssql"}:
         auth_mode = str(payload.get("auth_mode") or payload.get("authentication") or data.get("authentication") or "sql").lower()
         windows = auth_mode in {"windows", "trusted", "trusted_connection"}
@@ -210,6 +232,31 @@ def _normalize_database_payload(payload: dict[str, Any], existing: dict[str, Any
             "trust_server_certificate": bool(payload.get("trust_server_certificate", payload.get("trust_cert", data.get("trust_server_certificate", True)))),
             "timeout_seconds": int(payload.get("timeout_seconds") or data.get("timeout_seconds") or 10),
         })
+    else:
+        parsed = urlparse(str(payload.get("base_url") or data.get("base_url") or ""))
+        db_from_url = (parsed.path or "").strip("/") if parsed else ""
+        secret = payload.get("password") or payload.get("raw_secret") or (parsed.password if parsed else None)
+        env_default = re.sub(r"[^A-Z0-9]+", "_", str(profile_id or "DATABASE").upper()).strip("_") or "DATABASE"
+        env_name = payload.get("password_env_name") or payload.get("password_env") or data.get("password_env") or f"{env_default}_PASSWORD"
+        wrote_secret = _write_secret_if_new(env_name, secret)
+        data.update({
+            "provider": payload.get("provider") or data.get("provider") or "self_hosted",
+            "connection_kind": "native_sql",
+            "execution_transport": "native_driver",
+            "host": payload.get("host") or data.get("host") or (parsed.hostname if parsed else None) or "localhost",
+            "port": payload.get("port") or data.get("port") or (parsed.port if parsed else None),
+            "database": payload.get("database") or data.get("database") or db_from_url,
+            "username": payload.get("username") or payload.get("user") or data.get("username") or (parsed.username if parsed else None) or "",
+            "authentication": payload.get("authentication") or data.get("authentication") or "password",
+            "password_mode": "env" if wrote_secret or payload.get("preserve_secret") or data.get("password_env") else "none",
+            "secret_mode": "env" if wrote_secret or payload.get("preserve_secret") or data.get("secret_env") else "none",
+            "password_env": env_name if wrote_secret or payload.get("preserve_secret") or data.get("password_env") else "",
+            "secret_env": env_name if wrote_secret or payload.get("preserve_secret") or data.get("secret_env") else "",
+            "ssl_mode": payload.get("ssl_mode") or data.get("ssl_mode") or "preferred",
+            "timeout_seconds": int(payload.get("timeout_seconds") or data.get("timeout_seconds") or 15),
+        })
+        if not data.get("port"):
+            data["port"] = {"postgresql": 5432, "postgres": 5432, "mysql": 3306, "oracle": 1521}.get(str(driver).lower(), 5432)
     return data
 
 
